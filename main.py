@@ -26,7 +26,7 @@ class MyBot(commands.Bot):
 
                 try:
                     print(f'cogs.{p.stem}', end="　")
-                    await bot.load_extension(f'cogs.{p.stem}')
+                    await self.load_extension(f'cogs.{p.stem}')
                     print(f'success')
 
                 except commands.errors.NoEntryPointError:
@@ -39,6 +39,7 @@ class MyBot(commands.Bot):
 
 
 intent: discord.Intents = discord.Intents.default()
+intent.message_content = True
 bot = MyBot(command_prefix=command_prefix, intents=intent)
 
 bot.run(TOKEN)

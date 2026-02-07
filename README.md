@@ -9,6 +9,7 @@ A template for developing in discord.py using the Cog (commands framework).
 ## How to check the operation
 
 ・If you type `!goodmorning` and there is a response, it is working properly.
+・If you type `!cli`, the bot creates a thread-based CLI session.
 
 ## How to make sure the Bot works
 
