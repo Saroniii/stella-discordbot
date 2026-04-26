@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from utils.cli.formatter import render_config_pair
 from utils.cli.sections.base import SectionError, SectionSpec
 from utils.cli.types import LogTypeConfigV1
 
@@ -46,3 +47,22 @@ class LogTypeSection(SectionSpec):
         levels.pop(key, None)
         draft["levels"] = levels
         return self.validate_payload(draft)
+
+    def list_set_keys(self) -> list[str]:
+        return sorted(self.allowed_features)
+
+    def list_value_candidates(self, key: str) -> list[str]:
+        if key in self.allowed_features:
+            return ["debug", "info", "warn", "error"]
+        return []
+
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        def to_cli_payload(source: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not isinstance(source, dict):
+                return None
+            levels = source.get("levels")
+            if not isinstance(levels, dict):
+                return None
+            return {key: value for key, value in levels.items()}
+
+        return render_config_pair(self.name, to_cli_payload(now_config), to_cli_payload(deploy_config))

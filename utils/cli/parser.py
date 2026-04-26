@@ -16,7 +16,7 @@ class ParseError:
 
 
 def parse_line(line: str) -> ParsedCommand | ParseError | None:
-    stripped = line.strip()
+    stripped = line.strip().replace("？", "?")
     if not stripped:
         return None
     if stripped.startswith("#"):

@@ -1,73 +1,139 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
 
-from utils.cli.sections.base import SectionError, SectionSpec
+from utils.cli.formatter import render_config_pair, section_to_enter_path
+from utils.cli.sections.base import FieldRule, MappedSectionSpec
 from utils.cli.types import TenantConnectionConfigV1
 
 
-class TenantConnectionLogSection(SectionSpec):
+def _normalize_tenant_connection_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    draft = dict(payload)
+    tick = draft.get("tick")
+    if isinstance(tick, dict):
+        tick_copy = dict(tick)
+        limit = tick_copy.get("max_tick_limit")
+        if isinstance(limit, int):
+            tick_copy["max_tick_limit"] = max(100, min(limit, 1000000))
+        draft["tick"] = tick_copy
+    return draft
+
+
+class TenantConnectionLogSection(MappedSectionSpec):
     name = "tenant-connection/log"
     schema_version = 1
+    field_rules = {
+        "crashlog-report-channel": FieldRule(
+            path=("log", "crashlog_report_channel"),
+            parser=MappedSectionSpec.parse_single_int("crashlog-report-channel", hint="one channel id"),
+            candidates=["<channel-id>"],
+        ),
+        "receive-mode": FieldRule(
+            path=("log", "receive_mode"),
+            parser=MappedSectionSpec.parse_single_choice(
+                "receive-mode",
+                {"off", "discord", "database", "both"},
+                "off|discord|database|both",
+            ),
+            candidates=["off", "discord", "database", "both"],
+        ),
+        "crashlog-max-buffer": FieldRule(
+            path=("log", "crashlog_max_buffer"),
+            parser=MappedSectionSpec.parse_single_int("crashlog-max-buffer", hint="one integer"),
+            candidates=["<100..100000>"],
+        ),
+    }
+    field_aliases = {"recive-mode": "receive-mode"}
 
     def default_payload(self) -> dict[str, Any]:
         return TenantConnectionConfigV1().model_dump(mode="json")
 
     def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            return TenantConnectionConfigV1.model_validate(payload).model_dump(mode="json")
+            normalized = _normalize_tenant_connection_payload(payload)
+            return TenantConnectionConfigV1.model_validate(normalized).model_dump(mode="json")
         except ValidationError as exc:
             raise self._validation_error(exc)
 
-    def validate_set(self, payload: dict[str, Any], key: str, values: list[str]) -> dict[str, Any]:
-        canonical_key = "receive-mode" if key == "recive-mode" else key
-        draft = deepcopy(payload)
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        def to_cli_payload(source: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not isinstance(source, dict):
+                return None
+            if any(key in source for key in {"crashlog_report_channel", "receive_mode", "crashlog_max_buffer"}):
+                return {
+                    "crashlog_report_channel": source.get("crashlog_report_channel"),
+                    "receive_mode": source.get("receive_mode"),
+                    "crashlog_max_buffer": source.get("crashlog_max_buffer"),
+                }
+            log_data = source.get("log")
+            if isinstance(log_data, dict):
+                return {
+                    "crashlog_report_channel": log_data.get("crashlog_report_channel"),
+                    "receive_mode": log_data.get("receive_mode"),
+                    "crashlog_max_buffer": log_data.get("crashlog_max_buffer"),
+                }
+            return None
 
-        if canonical_key == "crashlog-report-channel":
-            if len(values) != 1:
-                raise SectionError("field=crashlog-report-channel reason=invalid value count hint=one channel id")
-            try:
-                draft["log"]["crashlog_report_channel"] = int(values[0])
-            except ValueError as exc:
-                raise SectionError("field=crashlog-report-channel reason=invalid integer hint=use numeric channel id") from exc
-        elif canonical_key == "receive-mode":
-            if len(values) != 1:
-                raise SectionError("field=receive-mode reason=invalid value count hint=off|discord|database|both")
-            value = values[0].lower()
-            if value not in {"off", "discord", "database", "both"}:
-                raise SectionError("field=receive-mode reason=invalid value hint=off|discord|database|both")
-            draft["log"]["receive_mode"] = value
-        elif canonical_key == "crashlog-max-buffer":
-            if len(values) != 1:
-                raise SectionError("field=crashlog-max-buffer reason=invalid value count hint=one integer")
-            try:
-                draft["log"]["crashlog_max_buffer"] = int(values[0])
-            except ValueError as exc:
-                raise SectionError("field=crashlog-max-buffer reason=invalid integer hint=use numeric value") from exc
-        else:
-            raise SectionError(
-                "field={0} reason=unknown key hint=allowed: crashlog-report-channel,receive-mode,crashlog-max-buffer".format(key)
-            )
+        return render_config_pair(
+            self.name,
+            to_cli_payload(now_config),
+            to_cli_payload(deploy_config),
+            enter_path=section_to_enter_path(self.name),
+        )
 
-        return self.validate_payload(draft)
 
-    def apply_unset(self, payload: dict[str, Any], key: str) -> dict[str, Any]:
-        canonical_key = "receive-mode" if key == "recive-mode" else key
-        draft = deepcopy(payload)
-        default = self.default_payload()
+class TenantConnectionTickSection(MappedSectionSpec):
+    name = "tenant-connection/tick"
+    schema_version = 1
+    field_rules = {
+        "max-tick-limit": FieldRule(
+            path=("tick", "max_tick_limit"),
+            parser=MappedSectionSpec.parse_single_int("max-tick-limit", hint="one integer"),
+            candidates=["<100..1000000>"],
+        ),
+        "overlimit-mode": FieldRule(
+            path=("tick", "overlimit_mode"),
+            parser=MappedSectionSpec.parse_single_choice(
+                "overlimit-mode",
+                {"alert-only", "drop-new-work"},
+                "alert-only|drop-new-work",
+            ),
+            candidates=["alert-only", "drop-new-work"],
+        ),
+    }
 
-        if canonical_key == "crashlog-report-channel":
-            draft["log"]["crashlog_report_channel"] = default["log"]["crashlog_report_channel"]
-        elif canonical_key == "receive-mode":
-            draft["log"]["receive_mode"] = default["log"]["receive_mode"]
-        elif canonical_key == "crashlog-max-buffer":
-            draft["log"]["crashlog_max_buffer"] = default["log"]["crashlog_max_buffer"]
-        else:
-            raise SectionError(
-                "field={0} reason=unknown key hint=allowed: crashlog-report-channel,receive-mode,crashlog-max-buffer".format(key)
-            )
+    def default_payload(self) -> dict[str, Any]:
+        return TenantConnectionConfigV1().model_dump(mode="json")
 
-        return self.validate_payload(draft)
+    def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            normalized = _normalize_tenant_connection_payload(payload)
+            return TenantConnectionConfigV1.model_validate(normalized).model_dump(mode="json")
+        except ValidationError as exc:
+            raise self._validation_error(exc)
+
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        def to_cli_payload(source: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not isinstance(source, dict):
+                return None
+            if "max_tick_limit" in source or "overlimit_mode" in source:
+                return {
+                    "max_tick_limit": source.get("max_tick_limit"),
+                    "overlimit_mode": source.get("overlimit_mode"),
+                }
+            tick_data = source.get("tick")
+            if isinstance(tick_data, dict):
+                return {
+                    "max_tick_limit": tick_data.get("max_tick_limit"),
+                    "overlimit_mode": tick_data.get("overlimit_mode"),
+                }
+            return None
+
+        return render_config_pair(
+            self.name,
+            to_cli_payload(now_config),
+            to_cli_payload(deploy_config),
+            enter_path=section_to_enter_path(self.name),
+        )
