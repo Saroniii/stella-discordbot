@@ -53,10 +53,8 @@ class MyBot(commands.Bot):
         if not self.ready_check:
             storage = Storage()
             await storage.init_schema()
-            print('Logged in as')
-            print(self.user.name)
-            print(self.user.id)
-            print(f'import')
+            print('Preparing bot startup')
+            print('import')
             folder_name = 'cogs'
             cur = pathlib.Path('.')
 
@@ -227,6 +225,10 @@ class MyBot(commands.Bot):
         await self.rebind_all_configs()
 
     async def on_ready(self):
+        if self.user is not None:
+            print('Logged in as')
+            print(self.user.name)
+            print(self.user.id)
         await self.ensure_config_bound()
 
 

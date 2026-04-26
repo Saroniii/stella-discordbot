@@ -357,6 +357,37 @@ async def test_format_output_blocks_splits_over_2000(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_format_output_blocks_sanitizes_code_fences(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    bot = FakeBot()
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    blocks = cog._format_output_blocks("before ``` after", "stella(guild:1)>")
+    assert len(blocks) == 1
+    assert blocks[0].count("```") == 2
+    assert "before `\u200b`\u200b` after" in blocks[0]
+
+
+@pytest.mark.asyncio
+async def test_format_output_blocks_splits_after_sanitizing_code_fences(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    bot = FakeBot()
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    blocks = cog._format_output_blocks("```" * 800, "stella(guild:1)>")
+    assert len(blocks) >= 2
+    assert all(len(block) <= 2000 for block in blocks)
+    assert all(block.count("```") == 2 for block in blocks)
+    assert "stella(guild:1)>" in blocks[-1]
+
+
+@pytest.mark.asyncio
 async def test_send_formatted_sends_multiple_messages(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)

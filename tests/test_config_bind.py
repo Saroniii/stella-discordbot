@@ -173,3 +173,16 @@ async def test_bot_config_bind_failure_releases_waiters_and_retries(monkeypatch,
     assert calls == 2
     assert main_module.bot.config_bind_ready.is_set()
     assert main_module.bot.config_bind_error is None
+
+
+@pytest.mark.asyncio
+async def test_bot_setup_hook_does_not_require_logged_in_user(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TOKEN", "test-token")
+    monkeypatch.setattr(commands.Bot, "run", lambda self, token: None)
+    sys.modules.pop("main", None)
+    main_module = importlib.import_module("main")
+
+    assert main_module.bot.user is None
+    await main_module.bot.setup_hook()
+    assert main_module.bot.ready_check is True

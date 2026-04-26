@@ -268,16 +268,17 @@ class CliCog(commands.Cog):
         self._cleanup_tasks.add(task)
 
     def _format_output_blocks(self, output: str, prompt: str) -> list[str]:
-        payload = output.strip()
-        if not payload:
-            return [self._wrap_code_block(prompt)]
-
         max_body_len = 2000 - len("```text\n") - len("\n```")
-        prompt_suffix = f"\n{prompt}"
+        raw_payload = output.strip()
+        if not raw_payload:
+            return [self._wrap_code_block(self._sanitize_code_block_body(prompt))]
+
+        payload = self._sanitize_code_block_body(raw_payload)
+        prompt_suffix = f"\n{self._sanitize_code_block_body(prompt)}"
         if len(payload) + len(prompt_suffix) <= max_body_len:
             return [self._wrap_code_block(f"{payload}{prompt_suffix}")]
 
-        chunks = self._chunk_text(payload, max_body_len)
+        chunks = self._chunk_sanitized_text(raw_payload, max_body_len)
         if len(chunks[-1]) + len(prompt_suffix) <= max_body_len:
             chunks[-1] = f"{chunks[-1]}{prompt_suffix}"
             return [self._wrap_code_block(chunk) for chunk in chunks]
@@ -321,6 +322,35 @@ class CliCog(commands.Cog):
         if len(token) <= max_len:
             return [token]
         return [token[index : index + max_len] for index in range(0, len(token), max_len)]
+
+    def _sanitize_code_block_body(self, body: str) -> str:
+        return body.replace("```", "`\u200b`\u200b`")
+
+    def _chunk_sanitized_text(self, text: str, max_len: int) -> list[str]:
+        if max_len <= 0:
+            return [self._sanitize_code_block_body(text)]
+        if not text:
+            return [""]
+
+        chunks: list[str] = []
+        current = ""
+        index = 0
+        while index < len(text):
+            if text.startswith("```", index):
+                token = "`\u200b`\u200b`"
+                index += 3
+            else:
+                token = text[index]
+                index += 1
+
+            if current and len(current) + len(token) > max_len:
+                chunks.append(current)
+                current = ""
+            current += token
+
+        if current:
+            chunks.append(current)
+        return chunks if chunks else [""]
 
     def _wrap_code_block(self, body: str) -> str:
         return f"```text\n{body}\n```"

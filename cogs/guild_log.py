@@ -339,62 +339,59 @@ class GuildLogCog(commands.Cog):
         if not await self.tick_meter.start_work(before.guild.id, "log.event.member.update.entry", stoppable=True):
             return
         config = await self._load_config(before.guild.id)
-        if config.member_log_channel is None:
-            if config.mod_log_channel is None:
-                return
-
-        if "nickname" in config.member_log_categories and before.nick != after.nick:
-            await self._send_log_embed(
-                before.guild,
-                config.member_log_channel,
-                title="Member Nickname Updated",
-                color=discord.Color.blurple(),
-                fields=[
-                    ("User", f"{after.mention} (`{after.id}`)", False),
-                    ("Before", before.nick or before.name, True),
-                    ("After", after.nick or after.name, True),
-                    ("At", _discord_timestamp_now(), True),
-                ],
-                tick_source="log.event.member.update.send",
-            )
-
-        if "role" in config.member_log_categories:
-            before_ids = {role.id for role in before.roles}
-            after_ids = {role.id for role in after.roles}
-            if before_ids != after_ids:
-                added = sorted(after_ids - before_ids)
-                removed = sorted(before_ids - after_ids)
+        if config.member_log_channel is not None:
+            if "nickname" in config.member_log_categories and before.nick != after.nick:
                 await self._send_log_embed(
                     before.guild,
                     config.member_log_channel,
-                    title="Member Roles Updated",
-                    color=discord.Color.gold(),
+                    title="Member Nickname Updated",
+                    color=discord.Color.blurple(),
                     fields=[
                         ("User", f"{after.mention} (`{after.id}`)", False),
-                        ("Added", " ".join(str(v) for v in added) if added else "-", True),
-                        ("Removed", " ".join(str(v) for v in removed) if removed else "-", True),
+                        ("Before", before.nick or before.name, True),
+                        ("After", after.nick or after.name, True),
                         ("At", _discord_timestamp_now(), True),
                     ],
                     tick_source="log.event.member.update.send",
                 )
 
-        if "avatar" in config.member_log_categories:
-            before_avatar = str(before.display_avatar.url) if before.display_avatar else ""
-            after_avatar = str(after.display_avatar.url) if after.display_avatar else ""
-            if before_avatar != after_avatar:
-                await self._send_log_embed(
-                    before.guild,
-                    config.member_log_channel,
-                    title="Member Avatar Updated",
-                    color=discord.Color.purple(),
-                    fields=[
-                        ("User", f"{after.mention} (`{after.id}`)", False),
-                        ("Before", before_avatar or "(none)", False),
-                        ("After", after_avatar or "(none)", False),
-                        ("At", _discord_timestamp_now(), True),
-                    ],
-                    tick_source="log.event.member.update.send",
-                )
+            if "role" in config.member_log_categories:
+                before_ids = {role.id for role in before.roles}
+                after_ids = {role.id for role in after.roles}
+                if before_ids != after_ids:
+                    added = sorted(after_ids - before_ids)
+                    removed = sorted(before_ids - after_ids)
+                    await self._send_log_embed(
+                        before.guild,
+                        config.member_log_channel,
+                        title="Member Roles Updated",
+                        color=discord.Color.gold(),
+                        fields=[
+                            ("User", f"{after.mention} (`{after.id}`)", False),
+                            ("Added", " ".join(str(v) for v in added) if added else "-", True),
+                            ("Removed", " ".join(str(v) for v in removed) if removed else "-", True),
+                            ("At", _discord_timestamp_now(), True),
+                        ],
+                        tick_source="log.event.member.update.send",
+                    )
+
+            if "avatar" in config.member_log_categories:
+                before_avatar = str(before.display_avatar.url) if before.display_avatar else ""
+                after_avatar = str(after.display_avatar.url) if after.display_avatar else ""
+                if before_avatar != after_avatar:
+                    await self._send_log_embed(
+                        before.guild,
+                        config.member_log_channel,
+                        title="Member Avatar Updated",
+                        color=discord.Color.purple(),
+                        fields=[
+                            ("User", f"{after.mention} (`{after.id}`)", False),
+                            ("Before", before_avatar or "(none)", False),
+                            ("After", after_avatar or "(none)", False),
+                            ("At", _discord_timestamp_now(), True),
+                        ],
+                        tick_source="log.event.member.update.send",
+                    )
 
         if config.mod_log_channel is not None and "timeout" in config.mod_log_types:
             before_timeout = before.communication_disabled_until
@@ -403,7 +400,6 @@ class GuildLogCog(commands.Cog):
             after_active = bool(after_timeout and after_timeout.astimezone(timezone.utc) > datetime.now(timezone.utc))
             if before_active != after_active:
                 title = "Member Timed Out" if after_active else "Member Timeout Removed"
-                until_text = after_timeout.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if after_active else "-"
                 await self._send_log_embed(
                     before.guild,
                     config.mod_log_channel,

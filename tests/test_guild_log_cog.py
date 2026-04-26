@@ -417,6 +417,64 @@ async def test_mod_log_timeout_outputs_embed(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_member_update_skips_member_logs_without_member_channel_but_keeps_timeout(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    bot = FakeBot()
+    cog = GuildLogCog(bot)
+    await cog.cog_load()
+
+    channel = FakeChannel(12)
+    guild = FakeGuild(1234, {12: channel})
+    bot._guilds[guild.id] = guild
+    now = datetime.now(timezone.utc)
+    before = FakeMember(
+        guild=guild,
+        user_id=889,
+        name="u1",
+        mention="<@889>",
+        nick="old",
+        roles=[1],
+        avatar_url="https://example.com/old.png",
+        communication_disabled_until=None,
+    )
+    after = FakeMember(
+        guild=guild,
+        user_id=889,
+        name="u1",
+        mention="<@889>",
+        nick="new",
+        roles=[2],
+        avatar_url="https://example.com/new.png",
+        communication_disabled_until=now + timedelta(minutes=10),
+    )
+
+    await cog.storage.upsert_config(
+        "guild",
+        1234,
+        "guild-log",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "mod_log": {"channel": 12, "types": ["timeout"]},
+                    "message_log": {"channel": None, "categories": [], "tracking_message_count": 1000},
+                    "member_log": {"channel": None, "categories": ["nickname", "role", "avatar"]},
+                },
+                "startup_payload": {
+                    "mod_log": {"channel": 12, "types": ["timeout"]},
+                    "message_log": {"channel": None, "categories": [], "tracking_message_count": 1000},
+                    "member_log": {"channel": None, "categories": ["nickname", "role", "avatar"]},
+                },
+            },
+        },
+    )
+
+    await cog.on_member_update(before, after)
+    assert len(channel.sent) == 1
+    assert channel.sent[0][1].title == "Member Timed Out"
+
+
+@pytest.mark.asyncio
 async def test_mod_log_mute_unmute_outputs_embed(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     bot = FakeBot()
