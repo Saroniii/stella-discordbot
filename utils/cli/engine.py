@@ -1026,7 +1026,6 @@ class CliEngine:
                 continue
             checked += 1
             spec = self._section_spec(section_key)
-            storage_key = self._storage_section_key(section_key)
             running, startup = await self._ensure_config_state(session, section_key)
             payload = dict(running if target == "now-config" else startup)
             try:

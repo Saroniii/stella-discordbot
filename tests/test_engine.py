@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from utils.cli.engine import CliEngine
-from utils.cli.types import EngineContext, ScopeType
+from utils.cli.types import EngineContext
 from utils.guild_log_cache import CachedMessage, guild_message_cache
 from utils.storage import Storage
 

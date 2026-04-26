@@ -44,7 +44,11 @@
 
 - Shared Discord fakes live in `tests/fakes/discord_objects.py`. Do not create `tests/fakes/discord.py`, because that name can be confused with the `discord` library.
 - Add focused helper tests when adding shared utilities.
-- After refactors, run `pytest`. For narrower checks, include:
+- After code changes, run all required checks before handing off:
+  - `pytest`
+  - `python -m mypy --explicit-package-bases .`
+  - `python -m ruff check .`
+- For narrower test debugging before the full required checks, include:
   - CLI: `tests/test_engine.py`, `tests/test_formatter.py`, `tests/test_level_gain_policy_section.py`
   - Storage: `tests/test_storage.py`, `tests/test_level_service.py`
   - Cogs: `tests/test_chat_group_cog.py`, `tests/test_sticky_auto_cog.py`, `tests/test_guild_log_cog.py`, `tests/test_cli_cog_integration.py`

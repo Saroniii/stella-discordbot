@@ -366,7 +366,7 @@ async def test_resolve_receive_config_defaults_when_missing(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_resolve_tick_config_defaults_when_missing(monkeypatch, tmp_path):
+async def test_resolve_tick_config_defaults_when_root_missing(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     storage = Storage()
     await storage.init_schema()

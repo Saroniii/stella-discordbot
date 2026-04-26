@@ -8,7 +8,7 @@ from typing import Any, Literal
 from utils.config_runtime import load_guild_running_section
 from utils.discord_helpers import safe_int
 from utils.tick import TickMeter
-from utils.storage import LevelRuntimeRow, LevelUserRow, Storage
+from utils.storage import LevelRuntimeRow, Storage
 
 
 EventType = Literal["message", "reaction", "voice"]

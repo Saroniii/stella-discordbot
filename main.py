@@ -63,7 +63,7 @@ class MyBot(commands.Bot):
                 try:
                     print(f'cogs.{p.stem}', end="　")
                     await self.load_extension(f'cogs.{p.stem}')
-                    print(f'success')
+                    print('success')
                     await self._safe_insert_system_log(
                         storage,
                         actor_user_id=None,

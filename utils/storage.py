@@ -367,7 +367,7 @@ class Storage:
             row = await cursor.fetchone()
             next_version = (row[0] + 1) if row else 1
             await db.execute(
-                f"""
+                """
                 INSERT INTO configs(scope_type, scope_id, section, data_json, version, updated_at)
                 VALUES(?, ?, ?, ?, ?, ?)
                 ON CONFLICT(scope_type, scope_id, section)
@@ -415,7 +415,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables(scope_type, scope_id, db=db)
             table = self._table_name(tenant_key, "audit_logs")
             await db.execute(
-                f"""
+                """
                 INSERT INTO audit_logs(at, actor_user_id, scope_type, scope_id, section, action, before_json, after_json, result)
                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.replace("audit_logs", table),
@@ -500,7 +500,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables(scope_type, resolved_scope_id, db=db)
             table = self._table_name(tenant_key, "system_logs")
             await db.execute(
-                f"""
+                """
                 INSERT INTO system_logs(at, actor_user_id, scope_id, feature, severity, message, detail_json)
                 VALUES(?, ?, ?, ?, ?, ?, ?)
                 """.replace("system_logs", table),
@@ -640,7 +640,7 @@ class Storage:
             audit_table = self._table_name(tenant_key, "audit_logs")
             system_table = self._table_name(tenant_key, "system_logs")
             await db.execute(
-                f"""
+                """
                 DELETE FROM audit_logs
                 WHERE scope_id=?
                   AND id NOT IN (
@@ -650,7 +650,7 @@ class Storage:
                 (scope_id, scope_id, audit_max),
             )
             await db.execute(
-                f"""
+                """
                 DELETE FROM system_logs
                 WHERE scope_id=?
                   AND id NOT IN (
@@ -705,7 +705,7 @@ class Storage:
                 tenant_key = await self._ensure_sqlite_tenant_tables(scope_type, scope_id, db=db)
                 table = self._table_name(tenant_key, "crash_logs")
                 await db.execute(
-                    f"""
+                    """
                     INSERT INTO crash_logs(error_id, at, scope_type, scope_id, actor_user_id, section, command, message, traceback, context_json, forward_mode, forward_status)
                     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.replace("crash_logs", table),
@@ -936,7 +936,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables(scope_type, scope_id, db=db)
             table = self._table_name(tenant_key, "crash_logs")
             await db.execute(
-                f"""
+                """
                 DELETE FROM crash_logs
                 WHERE scope_type=? AND scope_id=?
                   AND error_id NOT IN (
@@ -1085,7 +1085,7 @@ class Storage:
             await db.execute(f"DELETE FROM {table} WHERE guild_id=?", (guild_id,))
             for row in rows:
                 await db.execute(
-                    f"""
+                    """
                     INSERT INTO level_tables(guild_id, level, required_total_xp, delta_xp, segment, rebuilt_at)
                     VALUES(?, ?, ?, ?, ?, ?)
                     """.replace("level_tables", table),
@@ -1132,7 +1132,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_tables")
             cursor = await db.execute(
-                f"""
+                """
                 SELECT level, required_total_xp, delta_xp, segment, rebuilt_at
                 FROM level_tables
                 WHERE guild_id=?
@@ -1181,7 +1181,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_users")
             cursor = await db.execute(
-                f"""
+                """
                 SELECT guild_id, user_id, total_xp, level, updated_at
                 FROM level_users
                 WHERE guild_id=? AND user_id=?
@@ -1224,7 +1224,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_users")
             await db.execute(
-                f"""
+                """
                 INSERT INTO level_users(guild_id, user_id, total_xp, level, updated_at)
                 VALUES(?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, user_id)
@@ -1266,7 +1266,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_users")
             cursor = await db.execute(
-                f"""
+                """
                 SELECT guild_id, user_id, total_xp, level, updated_at
                 FROM level_users
                 WHERE guild_id=?
@@ -1316,7 +1316,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_runtime")
             cursor = await db.execute(
-                f"""
+                """
                 SELECT guild_id, user_id, last_message_at, last_reaction_at, voice_joined_at, last_voice_grant_at
                 FROM level_runtime
                 WHERE guild_id=? AND user_id=?
@@ -1385,7 +1385,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_runtime")
             await db.execute(
-                f"""
+                """
                 INSERT INTO level_runtime(guild_id, user_id, last_message_at, last_reaction_at, voice_joined_at, last_voice_grant_at)
                 VALUES(?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, user_id)
@@ -1436,7 +1436,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "level_event_logs")
             await db.execute(
-                f"""
+                """
                 INSERT INTO level_event_logs(at, guild_id, user_id, event_type, applied_xp, total_xp, level, reason, detail_json)
                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.replace("level_event_logs", table),
@@ -1496,7 +1496,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "sticky_runtime")
             cursor = await db.execute(
-                f"""
+                """
                 SELECT guild_id, channel_id, message_id, signature, updated_at
                 FROM sticky_runtime
                 WHERE guild_id=? AND channel_id=?
@@ -1545,7 +1545,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "sticky_runtime")
             await db.execute(
-                f"""
+                """
                 INSERT INTO sticky_runtime(guild_id, channel_id, message_id, signature, updated_at)
                 VALUES(?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, channel_id)
@@ -1571,7 +1571,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "sticky_runtime")
             await db.execute(
-                f"DELETE FROM sticky_runtime WHERE guild_id=? AND channel_id=?".replace("sticky_runtime", table),
+                "DELETE FROM sticky_runtime WHERE guild_id=? AND channel_id=?".replace("sticky_runtime", table),
                 (guild_id, channel_id),
             )
             await db.commit()
@@ -1628,7 +1628,7 @@ class Storage:
             tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
             table = self._table_name(tenant_key, "utility_webhooks")
             await db.execute(
-                f"""
+                """
                 INSERT INTO utility_webhooks(ref_id, guild_id, channel_id, webhook_id, webhook_token, tag, created_at)
                 VALUES(?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ref_id) DO UPDATE SET
