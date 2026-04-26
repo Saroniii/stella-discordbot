@@ -463,3 +463,57 @@ async def test_level_service_policy_time_window_wraps_midnight(monkeypatch, tmp_
         )
     )
     assert in_window.applied_xp == 7
+
+
+@pytest.mark.asyncio
+async def test_level_service_ignores_invalid_policy_roles(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    guild_id = 109
+    user_id = 209
+
+    await _put_running(storage, guild_id, "management-module", {"level": True, "welcome": True})
+    await _put_running(storage, guild_id, "level-common", {"gain_policy": True, "multiplier": 1.0, "gain_time": 1, "fixed_step": 100})
+    await _put_running(storage, guild_id, "level-method-message", {"gain_mode": "static", "gain_xp": 1, "gain_time": 1})
+    await _put_running(storage, guild_id, "level-shared", {"mode": "blacklist", "channels": []})
+    await _put_running(
+        storage,
+        guild_id,
+        "level-gain-policy",
+        {
+            "policies": [
+                {
+                    "id": "bad-id",
+                    "name": "broken-role",
+                    "action": "override",
+                    "channels": "any",
+                    "roles": ["not-a-role"],
+                    "method": "message",
+                    "gain_mode": "static",
+                    "gain_xp": 99,
+                    "gain_range_min": 1,
+                    "gain_range_max": 1,
+                    "gain_time": 1,
+                    "time_start": None,
+                    "time_end": None,
+                },
+                {"id": 0, "name": "", "action": "gain", "channels": "any", "roles": "any", "method": "any"},
+            ]
+        },
+    )
+
+    service = LevelService(storage)
+    result = await service.apply_event(
+        LevelEventContext(
+            guild_id=guild_id,
+            user_id=user_id,
+            event_type="message",
+            channel_id=1,
+            role_ids=[123],
+            occurred_at=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            message_length=20,
+        )
+    )
+    assert result.reason == "applied"
+    assert result.applied_xp == 1

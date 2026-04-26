@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import importlib
+import sys
 
 import aiosqlite
 import pytest
+from discord.ext import commands
 
 from utils import config_bind
 from utils.storage import Storage
@@ -141,3 +144,32 @@ def test_root_diff_sections_collects_global_and_override_keys():
     assert "control-plane/tick" in sections
     assert "sticky-message" in sections
     assert "auto-reaction" not in sections
+
+
+@pytest.mark.asyncio
+async def test_bot_config_bind_failure_releases_waiters_and_retries(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TOKEN", "test-token")
+    monkeypatch.setattr(commands.Bot, "run", lambda self, token: None)
+    sys.modules.pop("main", None)
+    main_module = importlib.import_module("main")
+
+    calls = 0
+
+    async def flaky_bind(_storage, _guild_ids, tick_meter=None):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("bind failed once")
+
+    monkeypatch.setattr(main_module, "bind_all_settings", flaky_bind)
+
+    await main_module.bot.ensure_config_bound()
+    assert main_module.bot.config_bind_ready.is_set()
+    assert isinstance(main_module.bot.config_bind_error, RuntimeError)
+    assert main_module.bot._config_bind_started is False  # noqa: SLF001
+
+    await main_module.bot.ensure_config_bound()
+    assert calls == 2
+    assert main_module.bot.config_bind_ready.is_set()
+    assert main_module.bot.config_bind_error is None

@@ -20,6 +20,7 @@ class MyBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         self.ready_check = False  # Variable to prevent duplicate on_ready events from being triggered
         self._config_bind_started = False
+        self.config_bind_error: Exception | None = None
         self._config_bind_lock = asyncio.Lock()
         self.config_bind_ready = asyncio.Event()
         self.config_bind_ready.clear()
@@ -104,18 +105,36 @@ class MyBot(commands.Bot):
             print('The start up process is already complete!')
 
     async def ensure_config_bound(self):
-        if self.config_bind_ready.is_set():
+        if self.config_bind_ready.is_set() and self.config_bind_error is None:
             return
         async with self._config_bind_lock:
-            if self.config_bind_ready.is_set():
+            if self.config_bind_ready.is_set() and self.config_bind_error is None:
                 return
             if self._config_bind_started:
                 return
             self._config_bind_started = True
+            self.config_bind_ready.clear()
+            self.config_bind_error = None
             storage = Storage()
-            await storage.init_schema()
-            guild_ids = [int(guild.id) for guild in self.guilds if getattr(guild, "id", None) is not None]
-            await bind_all_settings(storage, guild_ids, tick_meter=self.tick_meter)
+            try:
+                await storage.init_schema()
+                guild_ids = [int(guild.id) for guild in self.guilds if getattr(guild, "id", None) is not None]
+                await bind_all_settings(storage, guild_ids, tick_meter=self.tick_meter)
+            except Exception as exc:
+                self.config_bind_error = exc
+                self._config_bind_started = False
+                self.config_bind_ready.set()
+                await self._safe_insert_system_log(
+                    storage,
+                    actor_user_id=None,
+                    scope_id=0,
+                    feature="config-bind",
+                    severity="error",
+                    message="bind-runtime-failed",
+                    detail_json={"error_type": exc.__class__.__name__, "error": str(exc)},
+                )
+                return
+            self.config_bind_error = None
             self.config_bind_ready.set()
 
     async def rebind_all_configs(self) -> None:

@@ -711,3 +711,57 @@ async def test_sticky_embed_conversion_failures_are_logged(monkeypatch, tmp_path
     messages = [record.getMessage() for record in caplog.records]
     assert any("sticky embed signature conversion failed" in message for message in messages)
     assert any("sticky embed reconstruction failed" in message for message in messages)
+
+
+@pytest.mark.asyncio
+async def test_sticky_message_invalid_numeric_config_is_non_matching(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    bot = FakeBot()
+    cog = StickyAutoCog(bot)
+    cog.tick_meter = FakeTickMeter()
+    await cog.cog_load()
+
+    guild_channel = FakeChannel(777)
+    guild = FakeGuild(1234, guild_channel)
+    user = FakeUser(1, bot=False)
+    message = FakeMessage(guild, guild_channel, user, "hello")
+
+    await cog.storage.upsert_config("guild", 1234, "management-module", _envelope({"welcome": True, "level": True, "sticky_message": True, "auto_reaction": False}))
+    await cog.storage.upsert_config(
+        "guild",
+        1234,
+        "sticky-message",
+        _envelope(
+            {
+                "items": [
+                    {
+                        "id": "bad-id",
+                        "message": "should not match",
+                        "delay": 0,
+                        "trigger_bot_message": False,
+                        "channels": [{"id": "bad-channel-id", "channel_id": "not-a-channel", "send_mode": "bot"}],
+                        "embed": {"title": "", "description": "", "color": None, "avatar_url": None, "footer": None, "fields": []},
+                    },
+                    {
+                        "id": "also-bad",
+                        "message": "sticky here",
+                        "delay": 0,
+                        "trigger_bot_message": False,
+                        "channels": [{"id": 1, "channel_id": 777, "send_mode": "bot"}],
+                        "embed": {
+                            "title": "Title",
+                            "description": "",
+                            "color": None,
+                            "avatar_url": None,
+                            "footer": None,
+                            "fields": [{"id": "not-a-field-id", "name": "A", "value": "B", "inline_mode": False}],
+                        },
+                    },
+                ]
+            }
+        ),
+    )
+
+    await cog.on_message(message)
+    assert len(guild_channel.sent) == 1
+    assert guild_channel.sent[0][0] == "sticky here"

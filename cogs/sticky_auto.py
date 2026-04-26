@@ -76,7 +76,7 @@ class StickyAutoCog(commands.Cog):
         if not items:
             return
         chosen: tuple[dict[str, Any], dict[str, Any]] | None = None
-        for item in sorted((row for row in items if isinstance(row, dict)), key=lambda row: int(row.get("id", 0))):
+        for item in sorted((row for row in items if isinstance(row, dict)), key=lambda row: _safe_int(row.get("id"), 0)):
             trigger_bot_message = bool(item.get("trigger_bot_message", False))
             if message.author.bot and not trigger_bot_message:
                 continue
@@ -379,7 +379,7 @@ class StickyAutoCog(commands.Cog):
         for entry in channels:
             if not isinstance(entry, dict):
                 continue
-            if int(entry.get("channel_id") or 0) == channel_id:
+            if _safe_int(entry.get("channel_id")) == channel_id:
                 return entry
         return None
 
@@ -397,7 +397,7 @@ class StickyAutoCog(commands.Cog):
         fields = embed_cfg.get("fields", [])
         parsed_fields: list[tuple[str, str, bool]] = []
         if isinstance(fields, list):
-            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: int(it.get("id", 0))):
+            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: _safe_int(it.get("id"), 0)):
                 name = str(item.get("name", "") or "")
                 value = str(item.get("value", "") or "")
                 inline_mode = bool(item.get("inline_mode", False))
@@ -445,7 +445,7 @@ class StickyAutoCog(commands.Cog):
         channels = rule.get("channels", [])
         if not isinstance(channels, Sequence):
             return False
-        return channel_id in [int(ch) for ch in channels if isinstance(ch, int) or str(ch).isdigit()]
+        return channel_id in [_safe_int(ch) for ch in channels if _safe_int(ch) is not None]
 
     def _resolve_reaction_emoji(self, guild: discord.Guild, raw: str) -> str | discord.Emoji | None:
         raw = raw.strip()
@@ -461,3 +461,10 @@ class StickyAutoCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(StickyAutoCog(bot))
+
+
+def _safe_int(value: Any, default: int | None = None) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default

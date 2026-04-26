@@ -218,7 +218,7 @@ class LevelService:
             return None, 0
         sorted_rules = sorted(
             (rule for rule in rules if isinstance(rule, dict)),
-            key=lambda item: (int(item.get("id", 0)) == 0, int(item.get("id", 0))),
+            key=lambda item: (_safe_int(item.get("id"), 0) == 0, _safe_int(item.get("id"), 0)),
         )
         scanned = 0
         for rule in sorted_rules:
@@ -244,7 +244,11 @@ class LevelService:
         if roles != "any":
             if not isinstance(roles, list):
                 return False
-            if not set(ctx.role_ids) & set(int(item) for item in roles):
+            parsed_roles = {_safe_int(item) for item in roles}
+            parsed_roles.discard(None)
+            if not parsed_roles:
+                return False
+            if not set(ctx.role_ids) & parsed_roles:
                 return False
 
         start = rule.get("time_start")
@@ -267,7 +271,7 @@ class LevelService:
         end: str,
     ) -> None:
         minute_key = ctx.occurred_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-        rule_id = int(rule.get("id", 0))
+        rule_id = _safe_int(rule.get("id"), 0) or 0
         key = (ctx.guild_id, minute_key, rule_id, start, end)
         if key in self._invalid_time_warned:
             return
@@ -399,3 +403,10 @@ def _parse_hhmm(value: str):
     if hour_v < 0 or hour_v > 23 or minute_v < 0 or minute_v > 59:
         return None
     return datetime(2000, 1, 1, hour_v, minute_v, tzinfo=timezone.utc).time()
+
+
+def _safe_int(value: Any, default: int | None = None) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
