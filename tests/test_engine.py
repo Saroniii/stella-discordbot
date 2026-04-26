@@ -2033,6 +2033,27 @@ async def test_root_enforce_nested_enter_tick_set_and_show(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
+async def test_root_enforce_top_level_show_renders_sections_as_enter_tree(monkeypatch, tmp_path, admin_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(admin_ctx)
+    session, _ = await engine.execute(admin_ctx, session, "switch root")
+    session, _ = await engine.execute(admin_ctx, session, "enter root-enforce")
+    session, result = await engine.execute(admin_ctx, session, "set control-plane/tick.max-tick-limit 7000")
+    assert result.output == "ok"
+
+    session, result = await engine.execute(admin_ctx, session, "show")
+    assert "set sections.control-plane" not in result.output
+    assert "enter root-enforce" in result.output
+    assert "enter control-plane" in result.output
+    assert "enter tick" in result.output
+    assert "set max-tick-limit 7000" in result.output
+
+
+@pytest.mark.asyncio
 async def test_root_defaults_nested_enter_tick_set_and_show(monkeypatch, tmp_path, admin_ctx: EngineContext):
     monkeypatch.chdir(tmp_path)
     storage = Storage()
@@ -2052,6 +2073,27 @@ async def test_root_defaults_nested_enter_tick_set_and_show(monkeypatch, tmp_pat
     session, result = await engine.execute(admin_ctx, session, "set max-tick-limit 3000")
     assert result.output == "ok"
     session, result = await engine.execute(admin_ctx, session, "show now-config")
+    assert "enter root-defaults" in result.output
+    assert "enter control-plane" in result.output
+    assert "enter tick" in result.output
+    assert "set max-tick-limit 3000" in result.output
+
+
+@pytest.mark.asyncio
+async def test_root_defaults_top_level_show_renders_sections_as_enter_tree(monkeypatch, tmp_path, admin_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(admin_ctx)
+    session, _ = await engine.execute(admin_ctx, session, "switch root")
+    session, _ = await engine.execute(admin_ctx, session, "enter root-defaults")
+    session, result = await engine.execute(admin_ctx, session, "set control-plane/tick.max-tick-limit 3000")
+    assert result.output == "ok"
+
+    session, result = await engine.execute(admin_ctx, session, "show")
+    assert "set sections.control-plane" not in result.output
     assert "enter root-defaults" in result.output
     assert "enter control-plane" in result.output
     assert "enter tick" in result.output

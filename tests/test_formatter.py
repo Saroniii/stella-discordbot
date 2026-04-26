@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from utils.cli.formatter import (
     CliNode,
+    build_enter_tree,
+    build_sections_tree,
     indent_cli_lines,
     payload_to_set_lines,
     quote_value,
@@ -77,6 +79,47 @@ def test_render_config_pair_outputs_now_and_deploy_blocks():
     assert "enter welcome" in rendered
     assert "set join-roles 1 2" in rendered
     assert "set join-roles 3" in rendered
+
+
+def test_build_enter_tree_outputs_flat_payload_at_path_leaf():
+    lines = render_cli_tree([build_enter_tree(["control-plane", "tick"], {"max_tick_limit": 7000})])
+    assert lines == [
+        "enter control-plane",
+        "  enter tick",
+        "    set max-tick-limit 7000",
+        "    leave",
+        "  leave",
+    ]
+
+
+def test_build_enter_tree_outputs_empty_payload_comment():
+    lines = render_cli_tree([build_enter_tree(["welcome"], {})])
+    assert lines == [
+        "enter welcome",
+        "  # no settings",
+        "  leave",
+    ]
+
+
+def test_build_sections_tree_outputs_nested_section_paths():
+    lines = render_cli_tree(
+        [
+            build_sections_tree(
+                "root-enforce",
+                {"control-plane/tick": {"max-tick-limit": 7000, "overlimit-mode": "alert-only"}},
+            )
+        ]
+    )
+    assert lines == [
+        "enter root-enforce",
+        "  enter control-plane",
+        "    enter tick",
+        "      set max-tick-limit 7000",
+        "      set overlimit-mode alert-only",
+        "      leave",
+        "    leave",
+        "  leave",
+    ]
 
 
 def test_render_cli_tree_preserves_sibling_hierarchy():

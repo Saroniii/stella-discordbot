@@ -12,7 +12,7 @@ from utils.cli.logs import resolve_severity
 from utils.cli.parser import ParseError, parse_line
 from utils.cli.sections import build_section_registry
 from utils.cli.sections.base import SectionError, SectionSpec
-from utils.cli.formatter import CliNode, render_cli_tree, serialize_atom, to_cli_key
+from utils.cli.formatter import CliNode, build_sections_tree, render_cli_tree
 from utils.cli.types import ConfigEnvelope, EngineContext, EngineResult, ScopeType, SessionContext
 from utils.guild_log_cache import guild_message_cache
 from utils.tick import TickMeter
@@ -2376,34 +2376,7 @@ class CliEngine:
 
     async def _render_root_enforce_block_for_guild(self, session: SessionContext) -> str:
         enforce_sections = await self._effective_root_enforce_sections_for_guild(session.scope_id)
-        root = CliNode(kind="enter", text="enter root-enforce")
-        if not enforce_sections:
-            root.children.append(CliNode(kind="comment", text="# no settings"))
-            return "\n".join(render_cli_tree([root]))
-
-        tree: dict[str, Any] = {}
-        for section_key, fields in sorted(enforce_sections.items()):
-            node = tree
-            for token in section_key.split("/"):
-                node = node.setdefault(token, {})
-            node.setdefault("_fields", {}).update(fields)
-
-        def walk(node: dict[str, Any], parent: CliNode) -> None:
-            children = sorted(key for key in node.keys() if key != "_fields")
-            for child in children:
-                child_node = CliNode(kind="enter", text=f"enter {child}")
-                parent.children.append(child_node)
-                walk(node[child], child_node)
-            fields = node.get("_fields")
-            if isinstance(fields, dict):
-                for key, value in sorted(fields.items()):
-                    atom = serialize_atom(value)
-                    if atom is None:
-                        continue
-                    parent.children.append(CliNode(kind="set", text=f"set {to_cli_key(str(key))} {atom}"))
-
-        walk(tree, root)
-        return "\n".join(render_cli_tree([root]))
+        return "\n".join(render_cli_tree([build_sections_tree("root-enforce", enforce_sections)]))
 
     def _parse_show_mode(self, args: list[str]) -> tuple[str, bool, bool]:
         if not args:

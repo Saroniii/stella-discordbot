@@ -5,7 +5,16 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from utils.cli.formatter import CliNode, render_cli_tree, render_config_pair, section_to_enter_path, serialize_atom, to_cli_key
+from utils.cli.formatter import (
+    CliNode,
+    build_sections_tree,
+    render_cli_tree,
+    render_config_pair,
+    render_config_pair_from_nodes,
+    section_to_enter_path,
+    serialize_atom,
+    to_cli_key,
+)
 from utils.cli.sections.base import SectionError, SectionSpec, SelectableSectionSpec
 from utils.cli.types import RootDefaultsConfigV1, RootEnforceConfigV1, RootEnforceOverrideConfigV1
 
@@ -67,6 +76,26 @@ def _apply_section_field_unset(
     return sections
 
 
+def _extract_policy_sections(payload: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return {}
+    sections = payload.get("sections", {})
+    if not isinstance(sections, dict):
+        return {}
+    return {str(key): value for key, value in sections.items() if isinstance(value, dict)}
+
+
+def _render_policy_sections_pair(
+    root_name: str,
+    now_config: dict[str, Any],
+    deploy_config: dict[str, Any] | None,
+) -> str:
+    return render_config_pair_from_nodes(
+        build_sections_tree(root_name, _extract_policy_sections(now_config)),
+        build_sections_tree(root_name, _extract_policy_sections(deploy_config)),
+    )
+
+
 class RootDefaultsSection(SectionSpec):
     name = "root-defaults"
     schema_version = 1
@@ -109,6 +138,9 @@ class RootDefaultsSection(SectionSpec):
 
     def list_value_candidates(self, key: str) -> list[str]:
         return ["<value...>"]
+
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        return _render_policy_sections_pair(self.name, now_config, deploy_config)
 
 
 class RootDefaultsControlPlaneTickSection(SectionSpec):
@@ -240,6 +272,9 @@ class RootEnforceSection(SectionSpec):
 
     def list_value_candidates(self, key: str) -> list[str]:
         return ["<value...>"]
+
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        return _render_policy_sections_pair(self.name, now_config, deploy_config)
 
 
 class RootEnforceControlPlaneTickSection(SectionSpec):

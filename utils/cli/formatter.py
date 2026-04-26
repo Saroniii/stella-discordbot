@@ -126,28 +126,76 @@ def render_config_pair(
     enter_path: list[str] | None = None,
 ) -> str:
     path = enter_path if enter_path else [section]
+    return render_config_pair_from_nodes(
+        build_enter_tree(path, now_payload),
+        build_enter_tree(path, deploy_payload),
+    )
 
-    def build_root(payload: dict[str, Any] | None) -> CliNode:
-        root = CliNode(kind="enter", text=f"enter {path[0]}")
-        cursor = root
-        for token in path[1:]:
-            child = CliNode(kind="enter", text=f"enter {token}")
-            cursor.children.append(child)
-            cursor = child
-        if not payload:
-            cursor.children.append(CliNode(kind="comment", text="# no settings"))
-            return root
-        set_lines = payload_to_set_lines(payload)
-        if not set_lines:
-            cursor.children.append(CliNode(kind="comment", text="# no settings"))
-            return root
-        cursor.children.extend(CliNode(kind="set", text=line) for line in set_lines)
+
+def build_enter_tree(path: list[str], payload: dict[str, Any] | None) -> CliNode:
+    if not path:
+        raise ValueError("path must not be empty")
+    root = CliNode(kind="enter", text=f"enter {path[0]}")
+    cursor = root
+    for token in path[1:]:
+        child = CliNode(kind="enter", text=f"enter {token}")
+        cursor.children.append(child)
+        cursor = child
+    if not payload:
+        cursor.children.append(CliNode(kind="comment", text="# no settings"))
+        return root
+    set_lines = payload_to_set_lines(payload)
+    if not set_lines:
+        cursor.children.append(CliNode(kind="comment", text="# no settings"))
+        return root
+    cursor.children.extend(CliNode(kind="set", text=line) for line in set_lines)
+    return root
+
+
+def build_sections_tree(root_name: str, sections: dict[str, dict[str, Any]] | None) -> CliNode:
+    root = CliNode(kind="enter", text=f"enter {root_name}")
+    if not sections:
+        root.children.append(CliNode(kind="comment", text="# no settings"))
         return root
 
+    tree: dict[str, Any] = {}
+    for section_key, fields in sorted(sections.items()):
+        if not isinstance(fields, dict):
+            continue
+        node = tree
+        for token in str(section_key).split("/"):
+            if not token:
+                continue
+            node = node.setdefault(token, {})
+        node.setdefault("_fields", {}).update(fields)
+
+    def walk(node: dict[str, Any], parent: CliNode) -> None:
+        for child in sorted(key for key in node.keys() if key != "_fields"):
+            child_node = CliNode(kind="enter", text=f"enter {child}")
+            parent.children.append(child_node)
+            walk(node[child], child_node)
+        fields = node.get("_fields")
+        if not isinstance(fields, dict):
+            return
+        for key, value in sorted(fields.items()):
+            atom = serialize_atom(value)
+            if atom is None:
+                continue
+            parent.children.append(CliNode(kind="set", text=f"set {to_cli_key(str(key))} {atom}"))
+
+    walk(tree, root)
+    if not root.children:
+        root.children.append(CliNode(kind="comment", text="# no settings"))
+    return root
+
+
+def render_config_pair_from_nodes(now_node: CliNode, deploy_node: CliNode | None = None) -> str:
     lines = ["now-config:"]
-    lines.extend(render_cli_tree([build_root(now_payload)]))
+    lines.extend(render_cli_tree([now_node]))
     lines.append("deploy-config:")
-    lines.extend(render_cli_tree([build_root(deploy_payload)]))
+    if deploy_node is None:
+        deploy_node = build_enter_tree([now_node.text.removeprefix("enter ")], None)
+    lines.extend(render_cli_tree([deploy_node]))
     return "\n".join(lines)
 
 
