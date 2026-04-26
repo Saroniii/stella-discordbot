@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
+
+from pydantic import BaseModel
 
 from pydantic import ValidationError
 
@@ -11,6 +13,35 @@ from utils.cli.formatter import render_config_pair, section_to_enter_path
 
 class SectionError(Exception):
     pass
+
+
+def cli_error(field: str, reason: str, hint: str) -> str:
+    return f"field={field} reason={reason} hint={hint}"
+
+
+def require_selected_id(selected_object: str | None, *, field: str = "id", hint: str = "use numeric id") -> int:
+    if selected_object is None:
+        raise SectionError(cli_error("select", "missing target", "select <id>"))
+    try:
+        value = int(selected_object)
+    except ValueError as exc:
+        raise SectionError(cli_error(field, "invalid integer", hint)) from exc
+    if value <= 0:
+        raise SectionError(cli_error(field, "invalid integer", "use positive id"))
+    return value
+
+
+def require_unique_ids(rows: list[dict[str, Any]], *, field: str = "id") -> None:
+    ids = [int(row[field]) for row in rows]
+    if len(set(ids)) != len(ids):
+        raise SectionError(cli_error(field, "duplicate id", "id must be unique"))
+
+
+def find_row_by_id(rows: list[dict[str, Any]], target_id: int) -> dict[str, Any] | None:
+    for row in rows:
+        if int(row.get("id", -1)) == target_id:
+            return row
+    return None
 
 
 @dataclass(frozen=True)
@@ -234,6 +265,32 @@ class MappedSectionSpec(SectionSpec):
             return values[0]
 
         return parser
+
+
+class PydanticSectionSpec(SectionSpec):
+    model_type: ClassVar[type[BaseModel]]
+
+    def default_payload(self) -> dict[str, Any]:
+        return self.model_type().model_dump(mode="json")
+
+    def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.model_type.model_validate(payload).model_dump(mode="json")
+        except ValidationError as exc:
+            raise self._validation_error(exc)
+
+
+class PydanticMappedSectionSpec(MappedSectionSpec):
+    model_type: ClassVar[type[BaseModel]]
+
+    def default_payload(self) -> dict[str, Any]:
+        return self.model_type().model_dump(mode="json")
+
+    def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.model_type.model_validate(payload).model_dump(mode="json")
+        except ValidationError as exc:
+            raise self._validation_error(exc)
 
 
 class SelectableSectionSpec(SectionSpec):

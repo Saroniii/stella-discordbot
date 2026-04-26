@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
+from utils.config_runtime import load_guild_running_section
+from utils.discord_helpers import safe_int
 from utils.tick import TickMeter
 from utils.storage import LevelRuntimeRow, LevelUserRow, Storage
 
@@ -189,17 +191,7 @@ class LevelService:
             await self.storage.upsert_level_runtime(ctx.guild_id, ctx.user_id, **kwargs)
 
     async def _load_running_section(self, guild_id: int, section: str) -> dict[str, Any]:
-        stored = await self.storage.load_config("guild", guild_id, section)
-        if stored is None:
-            return {}
-        raw = stored.data if isinstance(stored.data, dict) else {}
-        payload = raw.get("payload", raw)
-        if not isinstance(payload, dict):
-            return {}
-        running = payload.get("running_payload")
-        if isinstance(running, dict):
-            return dict(running)
-        return dict(payload)
+        return await load_guild_running_section(self.storage, guild_id, section)
 
     def _allow_by_shared(self, shared: dict[str, Any], channel_id: int | None) -> bool:
         mode = str(shared.get("mode", "blacklist"))
@@ -406,7 +398,4 @@ def _parse_hhmm(value: str):
 
 
 def _safe_int(value: Any, default: int | None = None) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return safe_int(value, default)

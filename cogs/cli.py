@@ -15,6 +15,8 @@ from utils.cli.engine import CliEngine
 from utils.cli.session import SessionRegistry
 from utils.cli.types import EngineContext
 from utils.config_bind import deploy_many_guilds, rebind_many_guilds
+from utils.config_runtime import extract_running_payload
+from utils.discord_helpers import resolve_guild_channel
 from utils.storage import Storage
 from utils.tick import TickMeter
 
@@ -1189,13 +1191,10 @@ class CliCog(commands.Cog):
 
         created: list[str] = []
         for channel_id in channel_ids:
-            channel = guild.get_channel(channel_id)
+            channel = await resolve_guild_channel(guild, channel_id)
             if channel is None:
-                try:
-                    channel = await self.bot.fetch_channel(channel_id)
-                except discord.HTTPException:
-                    created.append(f"channel={channel_id} status=failed(fetch-channel)")
-                    continue
+                created.append(f"channel={channel_id} status=failed(fetch-channel)")
+                continue
             creator = getattr(channel, "create_webhook", None)
             if creator is None:
                 created.append(f"channel={channel_id} status=failed(unsupported-channel)")
@@ -1240,14 +1239,7 @@ class CliCog(commands.Cog):
         return f"delete-webhook id={ref_id} status={status}"
 
     def _running_payload(self, raw: dict) -> dict:
-        if not isinstance(raw, dict):
-            return {}
-        payload = raw.get("payload", raw)
-        if isinstance(payload, dict) and isinstance(payload.get("running_payload"), dict):
-            return dict(payload["running_payload"])
-        if isinstance(payload, dict):
-            return dict(payload)
-        return {}
+        return extract_running_payload(raw)
 
     def _append_cli_log_entry(self, session, prompt: str, line: str, output: str) -> None:
         stream = self._cli_log_streams.get(session.session_id)

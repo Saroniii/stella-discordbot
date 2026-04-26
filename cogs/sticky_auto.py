@@ -10,25 +10,14 @@ from typing import Any
 import discord
 from discord.ext import commands
 
+from utils.config_runtime import ensure_bind_ready, load_guild_running_section
+from utils.discord_helpers import parse_discord_color, safe_int
 from utils.storage import Storage
 from utils.tick import TickMeter
 
 
 _CUSTOM_EMOJI_RE = re.compile(r"^<a?:[a-zA-Z0-9_]+:(\d+)>$")
 logger = logging.getLogger(__name__)
-_COLOR_MAP = {
-    "blue": discord.Color.blue().value,
-    "blurple": discord.Color.blurple().value,
-    "green": discord.Color.green().value,
-    "red": discord.Color.red().value,
-    "orange": discord.Color.orange().value,
-    "yellow": discord.Color.yellow().value,
-    "purple": discord.Color.purple().value,
-    "magenta": discord.Color.magenta().value,
-    "teal": discord.Color.teal().value,
-}
-
-
 class StickyAutoCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -355,23 +344,10 @@ class StickyAutoCog(commands.Cog):
                     continue
 
     async def _load_running_section(self, guild_id: int, section: str) -> dict[str, Any]:
-        row = await self.storage.load_config("guild", guild_id, section)
-        if row is None or not isinstance(row.data, dict):
-            return {}
-        payload = row.data.get("payload", row.data)
-        if not isinstance(payload, dict):
-            return {}
-        running = payload.get("running_payload")
-        if isinstance(running, dict):
-            return dict(running)
-        return dict(payload)
+        return await load_guild_running_section(self.storage, guild_id, section)
 
     async def _ensure_bind_ready(self) -> None:
-        if hasattr(self.bot, "ensure_config_bound"):
-            await self.bot.ensure_config_bound()
-        bind_event = getattr(self.bot, "config_bind_ready", None)
-        if bind_event is not None:
-            await bind_event.wait()
+        await ensure_bind_ready(self.bot)
 
     def _find_sticky_channel(self, channels: Any, channel_id: int) -> dict[str, Any] | None:
         if not isinstance(channels, list):
@@ -379,7 +355,7 @@ class StickyAutoCog(commands.Cog):
         for entry in channels:
             if not isinstance(entry, dict):
                 continue
-            if _safe_int(entry.get("channel_id")) == channel_id:
+            if safe_int(entry.get("channel_id")) == channel_id:
                 return entry
         return None
 
@@ -397,7 +373,7 @@ class StickyAutoCog(commands.Cog):
         fields = embed_cfg.get("fields", [])
         parsed_fields: list[tuple[str, str, bool]] = []
         if isinstance(fields, list):
-            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: _safe_int(it.get("id"), 0)):
+            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: safe_int(it.get("id"), 0)):
                 name = str(item.get("name", "") or "")
                 value = str(item.get("value", "") or "")
                 inline_mode = bool(item.get("inline_mode", False))
@@ -424,28 +400,13 @@ class StickyAutoCog(commands.Cog):
         return embed
 
     def _parse_color(self, raw: Any) -> discord.Color | None:
-        if raw is None:
-            return None
-        value = str(raw).strip().lower()
-        if value == "":
-            return None
-        if value in _COLOR_MAP:
-            return discord.Color(_COLOR_MAP[value])
-        if value.startswith("0x"):
-            try:
-                return discord.Color(int(value, 16))
-            except ValueError:
-                return None
-        try:
-            return discord.Color(int(value))
-        except ValueError:
-            return None
+        return parse_discord_color(raw)
 
     def _rule_matches_channel(self, rule: dict[str, Any], channel_id: int) -> bool:
         channels = rule.get("channels", [])
         if not isinstance(channels, Sequence):
             return False
-        return channel_id in [_safe_int(ch) for ch in channels if _safe_int(ch) is not None]
+        return channel_id in [safe_int(ch) for ch in channels if safe_int(ch) is not None]
 
     def _resolve_reaction_emoji(self, guild: discord.Guild, raw: str) -> str | discord.Emoji | None:
         raw = raw.strip()
@@ -464,7 +425,4 @@ async def setup(bot: commands.Bot):
 
 
 def _safe_int(value: Any, default: int | None = None) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return safe_int(value, default)

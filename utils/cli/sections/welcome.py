@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import ClassVar
 
-from pydantic import ValidationError
+from pydantic import BaseModel
 
-from utils.cli.sections.base import FieldRule, MappedSectionSpec
+from utils.cli.sections.base import FieldRule, MappedSectionSpec, PydanticMappedSectionSpec
 from utils.cli.types import WelcomeConfigV1
 
 
-class WelcomeSection(MappedSectionSpec):
+class WelcomeSection(PydanticMappedSectionSpec):
     name = "welcome"
     schema_version = 1
+    model_type: ClassVar[type[BaseModel]] = WelcomeConfigV1
     field_rules = {
         "join-roles": FieldRule(
             path=("join_roles",),
@@ -27,12 +28,3 @@ class WelcomeSection(MappedSectionSpec):
             candidates=['"<text>"'],
         ),
     }
-
-    def default_payload(self) -> dict[str, Any]:
-        return WelcomeConfigV1().model_dump(mode="json")
-
-    def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        try:
-            return WelcomeConfigV1.model_validate(payload).model_dump(mode="json")
-        except ValidationError as exc:
-            raise self._validation_error(exc)

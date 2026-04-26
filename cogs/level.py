@@ -6,6 +6,8 @@ from math import floor
 import discord
 from discord.ext import commands
 
+from utils.config_runtime import ensure_bind_ready
+from utils.discord_helpers import resolve_guild_channel
 from utils.level import LevelEventContext, LevelService
 from utils.storage import Storage
 from utils.tick import TickMeter
@@ -147,12 +149,7 @@ class LevelCog(commands.Cog):
         channel_id = level_common.get("levelup_channel")
         if not isinstance(channel_id, int):
             return
-        channel = guild.get_channel(channel_id)
-        if channel is None:
-            try:
-                channel = await guild.fetch_channel(channel_id)
-            except discord.HTTPException:
-                return
+        channel = await resolve_guild_channel(guild, channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return
         await self.tick_meter.consume(guild.id, "log.discord.levelup", amount=1, stoppable=True)
@@ -166,11 +163,7 @@ class LevelCog(commands.Cog):
         await channel.send(message)
 
     async def _ensure_bind_ready(self) -> None:
-        if hasattr(self.bot, "ensure_config_bound"):
-            await self.bot.ensure_config_bound()
-        bind_event = getattr(self.bot, "config_bind_ready", None)
-        if bind_event is not None:
-            await bind_event.wait()
+        await ensure_bind_ready(self.bot)
 
     async def _build_rank_embed(self, guild_id: int, snapshot: dict) -> discord.Embed:
         level = int(snapshot.get("level", 0))

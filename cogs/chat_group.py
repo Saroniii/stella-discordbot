@@ -9,6 +9,8 @@ from typing import Any
 import discord
 from discord.ext import commands
 
+from utils.config_runtime import ensure_bind_ready, extract_running_payload
+from utils.discord_helpers import resolve_bot_channel, resolve_guild_channel
 from utils.storage import ChatGroupConnectionRow, ChatGroupRow, Storage
 from utils.tick import TickMeter
 
@@ -208,14 +210,7 @@ class ChatGroupCog(commands.Cog):
         guild = self.bot.get_guild(int(connection.guild_id))
         if guild is None:
             return None
-        channel = guild.get_channel(int(connection.channel_id))
-        if channel is None:
-            fetcher = getattr(guild, "fetch_channel", None)
-            if callable(fetcher):
-                try:
-                    channel = await fetcher(int(connection.channel_id))
-                except discord.HTTPException:
-                    channel = None
+        channel = await resolve_guild_channel(guild, int(connection.channel_id))
         if channel is None:
             return None
 
@@ -251,12 +246,7 @@ class ChatGroupCog(commands.Cog):
             )
             return []
 
-        channel = self.bot.get_channel(int(attachment_channel_id))
-        if channel is None:
-            try:
-                channel = await self.bot.fetch_channel(int(attachment_channel_id))
-            except discord.HTTPException:
-                channel = None
+        channel = await resolve_bot_channel(self.bot, int(attachment_channel_id))
         if channel is None:
             await self.storage.insert_system_log_safe(
                 actor_user_id=None,
@@ -348,11 +338,9 @@ class ChatGroupCog(commands.Cog):
         row = await self.storage.load_config("root", 0, "chat-group-global")
         if row is None or not isinstance(row.data, dict):
             return None
-        payload = row.data.get("payload", row.data)
-        if not isinstance(payload, dict):
-            return None
-        startup = payload.get("startup_payload")
-        active = startup if isinstance(startup, dict) else payload.get("running_payload")
+        raw_payload = row.data.get("payload", row.data)
+        startup = raw_payload.get("startup_payload") if isinstance(raw_payload, dict) else None
+        active = startup if isinstance(startup, dict) else extract_running_payload(row.data)
         if not isinstance(active, dict):
             return None
         value = active.get("attachment_channel_id")
@@ -377,8 +365,7 @@ class ChatGroupCog(commands.Cog):
         )
 
     async def _ensure_bind_ready(self) -> None:
-        if hasattr(self.bot, "ensure_config_bound"):
-            await self.bot.ensure_config_bound()
+        await ensure_bind_ready(self.bot)
 
     async def _update_rate_limit_state(self, group_id: str, *, queued_delta: int, inflight_delta: int) -> None:
         try:

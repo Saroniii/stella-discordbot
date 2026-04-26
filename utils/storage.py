@@ -16,6 +16,17 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 
+def _row_value(row: Any, key: str, index: int) -> Any:
+    try:
+        return row[key]
+    except (TypeError, KeyError, IndexError):
+        return row[index]
+
+
+def _row_datetime_text(value: Any) -> str:
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
 @dataclass
 class StoredConfig:
     data: dict[str, Any]
@@ -218,6 +229,17 @@ class Storage:
         self._sqlite_path = Path("data/stella.db")
         self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         self._pg_pool = None
+
+    def _utility_webhook_row(self, row: Any) -> UtilityWebhookRow:
+        return UtilityWebhookRow(
+            ref_id=str(_row_value(row, "ref_id", 0)),
+            guild_id=int(_row_value(row, "guild_id", 1)),
+            channel_id=int(_row_value(row, "channel_id", 2)),
+            webhook_id=int(_row_value(row, "webhook_id", 3)),
+            webhook_token=str(_row_value(row, "webhook_token", 4)),
+            tag=str(_row_value(row, "tag", 5)),
+            created_at=_row_datetime_text(_row_value(row, "created_at", 6)),
+        )
 
     async def init_schema(self) -> None:
         if self.backend == "postgres":
@@ -1666,18 +1688,7 @@ class Storage:
                         guild_id,
                         limit,
                     )
-            return [
-                UtilityWebhookRow(
-                    ref_id=str(row["ref_id"]),
-                    guild_id=int(row["guild_id"]),
-                    channel_id=int(row["channel_id"]),
-                    webhook_id=int(row["webhook_id"]),
-                    webhook_token=str(row["webhook_token"]),
-                    tag=str(row["tag"]),
-                    created_at=row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
-                )
-                for row in rows
-            ]
+            return [self._utility_webhook_row(row) for row in rows]
 
         async with aiosqlite.connect(self._sqlite_path) as db:
             rows: list[tuple[Any, ...]] = []
@@ -1708,18 +1719,7 @@ class Storage:
                 rows.extend(await cursor.fetchall())
             rows.sort(key=lambda item: str(item[6]), reverse=True)
             rows = rows[:limit]
-        return [
-            UtilityWebhookRow(
-                ref_id=str(row[0]),
-                guild_id=int(row[1]),
-                channel_id=int(row[2]),
-                webhook_id=int(row[3]),
-                webhook_token=str(row[4]),
-                tag=str(row[5]),
-                created_at=str(row[6]),
-            )
-            for row in rows
-        ]
+        return [self._utility_webhook_row(row) for row in rows]
 
     async def get_utility_webhook(self, ref_id: str) -> UtilityWebhookRow | None:
         if self.backend == "postgres":
@@ -1742,15 +1742,7 @@ class Storage:
                 )
             if row is None:
                 return None
-            return UtilityWebhookRow(
-                ref_id=str(row["ref_id"]),
-                guild_id=int(row["guild_id"]),
-                channel_id=int(row["channel_id"]),
-                webhook_id=int(row["webhook_id"]),
-                webhook_token=str(row["webhook_token"]),
-                tag=str(row["tag"]),
-                created_at=row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
-            )
+            return self._utility_webhook_row(row)
 
         async with aiosqlite.connect(self._sqlite_path) as db:
             cursor = await db.execute(
@@ -1772,15 +1764,7 @@ class Storage:
             row = await cursor.fetchone()
         if row is None:
             return None
-        return UtilityWebhookRow(
-            ref_id=str(row[0]),
-            guild_id=int(row[1]),
-            channel_id=int(row[2]),
-            webhook_id=int(row[3]),
-            webhook_token=str(row[4]),
-            tag=str(row[5]),
-            created_at=str(row[6]),
-        )
+        return self._utility_webhook_row(row)
 
     async def delete_utility_webhook(self, ref_id: str) -> None:
         if self.backend == "postgres":

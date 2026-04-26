@@ -152,6 +152,22 @@ def build_enter_tree(path: list[str], payload: dict[str, Any] | None) -> CliNode
     return root
 
 
+def no_settings_node() -> CliNode:
+    return CliNode(kind="comment", text="# no settings")
+
+
+def empty_select_node(target: str = "<id>", children: list[CliNode] | None = None) -> CliNode:
+    return CliNode(kind="select", text=f"select {target}", children=children or [no_settings_node()])
+
+
+def render_config_pair_from_builders(
+    now_config: dict[str, Any] | None,
+    deploy_config: dict[str, Any] | None,
+    build_node: Any,
+) -> str:
+    return render_config_pair_from_nodes(build_node(now_config), build_node(deploy_config))
+
+
 def build_sections_tree(root_name: str, sections: dict[str, dict[str, Any]] | None) -> CliNode:
     root = CliNode(kind="enter", text=f"enter {root_name}")
     if not sections:

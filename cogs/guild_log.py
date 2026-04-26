@@ -7,6 +7,8 @@ from typing import Any
 import discord
 from discord.ext import commands
 
+from utils.config_runtime import ensure_bind_ready, extract_running_payload
+from utils.discord_helpers import discord_timestamp_from_datetime, discord_timestamp_now, resolve_guild_channel, trim_text
 from utils.guild_log_cache import CachedMessage, guild_message_cache
 from utils.storage import Storage
 from utils.tick import TickMeter
@@ -446,17 +448,13 @@ class GuildLogCog(commands.Cog):
             )
 
     async def _ensure_bind_ready(self) -> None:
-        if hasattr(self.bot, "ensure_config_bound"):
-            await self.bot.ensure_config_bound()
-        bind_event = getattr(self.bot, "config_bind_ready", None)
-        if bind_event is not None:
-            await bind_event.wait()
+        await ensure_bind_ready(self.bot)
 
     async def _load_config(self, guild_id: int) -> _GuildLogConfig:
         stored = await self.storage.load_config("guild", guild_id, "guild-log")
         if stored is None:
             return _GuildLogConfig(None, set(), None, set(), 1000, "normal", None, set())
-        payload = _extract_running_payload(stored.data)
+        payload = extract_running_payload(stored.data)
         mod_log = payload.get("mod_log", {}) if isinstance(payload, dict) else {}
         message_log = payload.get("message_log", {}) if isinstance(payload, dict) else {}
         member_log = payload.get("member_log", {}) if isinstance(payload, dict) else {}
@@ -487,18 +485,13 @@ class GuildLogCog(commands.Cog):
     ) -> None:
         if not await self.tick_meter.consume(guild.id, tick_source, amount=1, stoppable=True):
             return
-        channel = guild.get_channel(channel_id)
-        if channel is None:
-            try:
-                channel = await guild.fetch_channel(channel_id)
-            except discord.HTTPException:
-                return
+        channel = await resolve_guild_channel(guild, channel_id)
         send = getattr(channel, "send", None)
         if send is None:
             return
         embed = discord.Embed(title=title, color=color, timestamp=datetime.now(timezone.utc))
         for name, value, inline in fields:
-            embed.add_field(name=name, value=_trim_text(value, limit=1000), inline=inline)
+            embed.add_field(name=name, value=trim_text(value, limit=1000), inline=inline)
         try:
             await send(embed=embed)
         except discord.HTTPException:
@@ -550,29 +543,16 @@ class GuildLogCog(commands.Cog):
         return guild_message_cache.pop(guild_id, message_id)
 
 
-def _extract_running_payload(raw: dict[str, Any]) -> dict[str, Any]:
-    payload = raw.get("payload", raw) if isinstance(raw, dict) else {}
-    if isinstance(payload, dict) and isinstance(payload.get("running_payload"), dict):
-        return dict(payload["running_payload"])
-    if isinstance(payload, dict):
-        return dict(payload)
-    return {}
-
-
 def _trim_text(value: str, limit: int = 300) -> str:
-    text = value.replace("\n", "\\n")
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3] + "..."
+    return trim_text(value, limit)
 
 
 def _discord_timestamp_now() -> str:
-    return _discord_timestamp_from_datetime(datetime.now(timezone.utc))
+    return discord_timestamp_now()
 
 
 def _discord_timestamp_from_datetime(value: datetime) -> str:
-    unix = int(value.timestamp())
-    return f"<t:{unix}:F>"
+    return discord_timestamp_from_datetime(value)
 
 
 async def setup(bot: commands.Bot):
