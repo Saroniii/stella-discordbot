@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from math import floor
+from typing import Any
 
 import discord
 from discord.ext import commands
@@ -36,7 +37,7 @@ class LevelCog(commands.Cog):
             await ctx.send("guild-only command")
             return
         snapshot = await self.service.get_rank_snapshot(ctx.guild.id, ctx.author.id)
-        embed = await self._build_rank_embed(ctx.guild.id, snapshot)
+        embed = await self._build_rank_embed(ctx.guild.id, snapshot, member=ctx.author)
         await ctx.send(content=f"{ctx.author.mention}", embed=embed)
 
     @commands.command(name="ranking")
@@ -50,10 +51,8 @@ class LevelCog(commands.Cog):
         if not rows:
             await ctx.send("ranking: (empty)")
             return
-        lines = ["ranking:"]
-        for index, row in enumerate(rows, start=1):
-            lines.append(f"{index}. user={row.user_id} level={row.level} total_xp={row.total_xp}")
-        await ctx.send("```text\n" + "\n".join(lines) + "\n```")
+        embed = self._build_ranking_embed(rows, requested_limit=limit)
+        await ctx.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -165,7 +164,7 @@ class LevelCog(commands.Cog):
     async def _ensure_bind_ready(self) -> None:
         await ensure_bind_ready(self.bot)
 
-    async def _build_rank_embed(self, guild_id: int, snapshot: dict) -> discord.Embed:
+    async def _build_rank_embed(self, guild_id: int, snapshot: dict, member: discord.Member | None = None) -> discord.Embed:
         level = int(snapshot.get("level", 0))
         total_xp = int(snapshot.get("total_xp", 0))
         next_level_xp = snapshot.get("next_level_xp")
@@ -174,19 +173,34 @@ class LevelCog(commands.Cog):
         current_floor, next_threshold = await self._resolve_level_progress_bounds(guild_id, total_xp, level, next_level_xp)
         progress_percent = self._progress_percent(total_xp, current_floor, next_threshold)
         progress_bar = self._progress_bar(progress_percent)
-        rank_text = str(rank) if rank is not None else "-"
-        next_text = "MAX" if next_threshold is None else str(next_threshold)
-        remain_text = "-" if next_threshold is None else str(max(0, next_threshold - total_xp))
+        rank_text = f"#{rank}" if rank is not None else "Unranked"
+        next_text = "Max level" if next_threshold is None else f"{next_threshold:,} XP"
+        remain_text = "Complete" if next_threshold is None else f"{max(0, next_threshold - total_xp):,} XP"
 
         embed = discord.Embed(title="Level Status", color=discord.Color.blurple())
+        if member is not None:
+            embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
         embed.add_field(name="Level", value=str(level), inline=True)
-        embed.add_field(name="Total XP", value=str(total_xp), inline=True)
+        embed.add_field(name="Total XP", value=f"{total_xp:,}", inline=True)
         embed.add_field(name="Rank", value=rank_text, inline=True)
+        embed.add_field(name="Next Level", value=next_text, inline=True)
+        embed.add_field(name="Remaining", value=remain_text, inline=True)
         embed.add_field(
             name="Progress",
             value=f"`{progress_bar}` {progress_percent:.1f}%\nnext={next_text} remain={remain_text}",
             inline=False,
         )
+        return embed
+
+    def _build_ranking_embed(self, rows: list[Any], *, requested_limit: int) -> discord.Embed:
+        embed = discord.Embed(title="Level Ranking", color=discord.Color.gold())
+        lines = ["```text", "rank  user                  level  xp"]
+        for index, row in enumerate(rows, start=1):
+            lines.append(f"{index:>4}  {row.user_id:<20} {row.level:>5}  {row.total_xp:>8}")
+        lines.append("```")
+        embed.description = "\n".join(lines)
+        if requested_limit > len(rows):
+            embed.set_footer(text=f"Showing {len(rows)} ranked users")
         return embed
 
     async def _resolve_level_progress_bounds(

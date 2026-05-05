@@ -1,16 +1,66 @@
-## dpy_cog_template
+# Stella Discord Bot
 
-A template for developing in discord.py using the Cog (commands framework).
+Stella is a Discord bot with server management features, thread-based admin CLI settings, guild logs, chat groups, sticky messages, and a level/ranking system.
 
-## How to use
+## Setup
 
-・Put the bot client's token in the environment variable named `TOKEN` and start it.
+1. Install dependencies.
 
-## How to check the operation
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-・If you type `!goodmorning` and there is a response, it is working properly.
-・If you type `!cli`, the bot creates a thread-based CLI session.
+2. Set the bot token.
 
-## How to make sure the Bot works
+   ```bash
+   export TOKEN="your-discord-bot-token"
+   ```
 
-・You can change this by rewriting the `command_prefix` variable on line 8 in `main.py`.
+3. Start the bot.
+
+   ```bash
+   python main.py
+   ```
+
+By default, the bot uses SQLite at `data/stella.db`. Set `DATABASE_URL` to use PostgreSQL.
+
+## Basic Commands
+
+- `!cli` opens the admin CLI. The user must have Discord's Manage Guild permission.
+- `!rank` shows your current level, XP, rank, and progress to the next level.
+- `!ranking [limit]` shows the server level ranking. The limit is clamped to `1..50`.
+
+## Admin CLI Flow
+
+Run `!cli` in a guild channel. Stella creates a CLI session in a thread unless the console config is changed.
+
+Useful first commands:
+
+```text
+help
+?
+enter ?
+show
+```
+
+Typical config edit flow:
+
+```text
+enter welcome
+show
+set welcome-message "Welcome {mention}!"
+deploy
+quit
+```
+
+The CLI keeps a running config during the session. Use `deploy` to persist it as startup config, or `discard` to restore the session state from startup config.
+
+## Checks
+
+Run the full project checks before handing off changes.
+
+```bash
+pytest
+python -m mypy --explicit-package-bases .
+python -m ruff check .
+```

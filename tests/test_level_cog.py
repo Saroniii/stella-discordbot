@@ -4,7 +4,7 @@ import pytest
 
 from cogs.level import LevelCog
 from utils.config_bind import bind_all_settings
-from utils.storage import Storage
+from utils.storage import LevelUserRow, Storage
 
 
 class FakeGuild:
@@ -116,6 +116,30 @@ async def test_build_rank_embed_uses_table_thresholds(monkeypatch, tmp_path):
     progress_field = next(field for field in embed.fields if field.name == "Progress")
     assert "50.0%" in progress_field.value
     assert "remain=75" in progress_field.value
+    assert next(field for field in embed.fields if field.name == "Total XP").value == "175"
+    assert next(field for field in embed.fields if field.name == "Rank").value == "#7"
+    assert next(field for field in embed.fields if field.name == "Next Level").value == "250 XP"
+    assert next(field for field in embed.fields if field.name == "Remaining").value == "75 XP"
+
+
+@pytest.mark.asyncio
+async def test_build_ranking_embed_uses_discord_readable_table(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    bot = FakeBot([1234])
+    cog = LevelCog(bot)
+    await cog.cog_load()
+
+    rows = [
+        LevelUserRow(guild_id=1234, user_id=100, total_xp=12345, level=12, updated_at="now"),
+        LevelUserRow(guild_id=1234, user_id=200, total_xp=900, level=3, updated_at="now"),
+    ]
+    embed = cog._build_ranking_embed(rows, requested_limit=10)
+
+    assert embed.title == "Level Ranking"
+    assert "rank  user" in embed.description
+    assert "100" in embed.description
+    assert "12345" in embed.description
+    assert embed.footer.text == "Showing 2 ranked users"
 
 
 @pytest.mark.asyncio

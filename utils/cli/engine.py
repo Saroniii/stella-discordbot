@@ -23,22 +23,48 @@ logger = logging.getLogger(__name__)
 
 
 HELP_TEXT = """commands:
-  help [cmd]
-  where | top | quit
-  enter <section|?|prefix?> | leave | select <id>|?
-  insert <before-id> | move <id> before|after <target-id> | move <id> top|bottom
-  set <key> <value...> | set ? | set <prefix>? | set <key> ? | unset <key> | show [now-config [backup]|deploy-config|diff-config [diff-only]] | deploy | discard
-  get counters all | get tick status | get guild-log message cache status | get level-table [now-config] | get level me|user <id>|ranking [limit] | get chat-group ...
-  get utils webhook
-  execute utils create-webhook channel <channel-id> tag "<tag>" | execute utils create-webhook auto-context tag "<tag>" | execute utils delete-webhook <id>
-  execute chat-group ...
-  execute console thread unused remove <channel-id>
-  execute cli to-file start [no-message-response] | execute cli to-file stop
-  execute config rebind root-diff|full all-guilds|guild <guild-id> | execute config deploy all-guilds|guild <guild-id>
-  execute system restart [keep-active-cli]
-  get log audit [limit] | get log system [limit] | get log crash [limit|error_id]
-  diagnose database | diagnose config level-policy reorder | diagnose config validate [now-config|deploy-config] | diagnose level-table rebuild
-  switch root | switch guild <guild-id>
+  start:
+    ?                              show what you can do next
+    enter ?                        list sections from the current path
+    show [now-config|deploy-config|diff-config]  inspect config at the current path
+
+  Navigation:
+    help [cmd]
+    where | top | quit
+    enter <section|?|prefix?> | leave | select <id>|?
+
+  Edit:
+    insert <before-id> | move <id> before|after <target-id> | move <id> top|bottom
+    set <key> <value...> | set ? | set <prefix>? | set <key> ? | unset <key>
+
+  Inspect:
+    show [now-config [backup]|deploy-config|diff-config [diff-only]]
+    get counters all | get tick status | get guild-log message cache status | get level-table [now-config] | get level me|user <id>|ranking [limit] | get chat-group ...
+    get utils webhook
+    get log audit [limit] | get log system [limit] | get log crash [limit|error_id]
+
+  Deploy:
+    deploy | discard
+
+  Diagnostics:
+    diagnose database | diagnose config level-policy reorder | diagnose config validate [now-config|deploy-config] | diagnose level-table rebuild
+
+  Admin:
+    execute utils create-webhook channel <channel-id> tag "<tag>" | execute utils create-webhook auto-context tag "<tag>" | execute utils delete-webhook <id>
+    execute chat-group ...
+    execute console thread unused remove <channel-id>
+    execute cli to-file start [no-message-response] | execute cli to-file stop
+    execute config rebind root-diff|full all-guilds|guild <guild-id> | execute config deploy all-guilds|guild <guild-id>
+    execute system restart [keep-active-cli]
+    switch root | switch guild <guild-id>
+"""
+
+SESSION_START_TEXT = """CLI session started.
+start:
+  help     show command groups
+  ?        show what you can do next
+  enter ?  list sections
+  show     inspect current config
 """
 
 
@@ -96,7 +122,7 @@ class CliEngine:
             scope_type=ScopeType.GUILD,
             scope_id=ctx.guild_id,
         )
-        output = "CLI session started. use `help` for commands."
+        output = SESSION_START_TEXT
         return session, EngineResult(output=output, prompt=self._prompt(session), should_exit=False)
 
     async def execute(self, ctx: EngineContext, session: SessionContext, line: str) -> tuple[SessionContext, EngineResult]:
@@ -1501,11 +1527,21 @@ class CliEngine:
 
         candidates = self._next_candidates(ctx, session)
         suffix = self._format_candidates("next candidates:", candidates)
-        if result.output:
-            merged = f"{result.output}\n\n{suffix}"
+        hint = self._extract_hint(result.output)
+        hint_suffix = f"next action: {hint}" if hint else ""
+        parts = [part for part in [result.output, hint_suffix, suffix] if part]
+        if parts:
+            merged = "\n\n".join(parts)
         else:
             merged = suffix
         return EngineResult(output=merged, prompt=result.prompt, should_exit=result.should_exit)
+
+    def _extract_hint(self, output: str) -> str | None:
+        marker = " hint="
+        if marker not in output:
+            return None
+        hint = output.split(marker, 1)[1].splitlines()[0].strip()
+        return hint or None
 
     def _next_candidates(self, ctx: EngineContext, session: SessionContext) -> list[str]:
         section_key = self._current_section_key(session)
@@ -1611,7 +1647,30 @@ class CliEngine:
     def _format_candidates(self, title: str, candidates: list[str]) -> str:
         if not candidates:
             return f"{title}\n(none)"
-        return "\n".join([title, *candidates])
+        grouped = self._group_candidates(candidates)
+        return "\n".join([title, *grouped])
+
+    def _group_candidates(self, candidates: list[str]) -> list[str]:
+        groups = [
+            ("enter:", lambda item: item.startswith("enter ")),
+            ("set:", lambda item: item.startswith("set ")),
+            ("select:", lambda item: item.startswith("select ")),
+            ("navigate:", lambda item: item in {"leave", "top", "quit"}),
+            ("other:", lambda item: True),
+        ]
+        remaining = list(candidates)
+        lines: list[str] = []
+        for heading, predicate in groups:
+            matched = [item for item in remaining if predicate(item)]
+            if not matched:
+                continue
+            if lines:
+                lines.append("")
+            lines.append(heading)
+            lines.extend(f"  {item}" for item in matched)
+            matched_set = set(matched)
+            remaining = [item for item in remaining if item not in matched_set]
+        return lines
 
     def _has_question_suffix(self, value: str) -> bool:
         return value.endswith("?") or value.endswith("？")
