@@ -21,9 +21,9 @@ from utils.storage import Storage
 from utils.tick import TickMeter
 
 
-SESSION_TIMEOUT_SEC = 600
-THREAD_DELETE_DELAY_SEC = 10
-CLI_THREAD_PREFIX = "stella-cli-"
+DEFAULT_SESSION_TIMEOUT_SEC = 600
+DEFAULT_THREAD_DELETE_DELAY_SEC = 10
+DEFAULT_CLI_THREAD_PREFIX = "stella-cli-"
 _CUSTOM_EMOJI_RE = re.compile(r"^<a?:[a-zA-Z0-9_]+:(\d+)>$")
 
 
@@ -79,14 +79,18 @@ class CliCog(commands.Cog):
             await ctx.send("Manage Guild permission is required.")
             return
 
+        console_config = await self._load_console_config(ctx.guild.id)
+        session_timeout_sec = int(console_config["session_timeout_sec"])
+        thread_delete_delay_sec = int(console_config["thread_delete_delay_sec"])
+        thread_prefix = str(console_config["thread_prefix"])
+
         existing = self.sessions.get(ctx.guild.id)
-        if existing and not self.sessions.is_expired(ctx.guild.id, SESSION_TIMEOUT_SEC):
+        if existing and not self.sessions.is_expired(ctx.guild.id, session_timeout_sec):
             await ctx.send(f"An active CLI session already exists: <#{existing.thread_id}>")
             return
         if existing:
             self.sessions.release(ctx.guild.id)
 
-        console_config = await self._load_console_config(ctx.guild.id)
         console_mode = str(console_config.get("console_mode", "thread"))
         auto_delete_thread = bool(console_config.get("thread_console_after_delete", False))
         target_channel = ctx.channel
@@ -97,7 +101,7 @@ class CliCog(commands.Cog):
                 return
 
             try:
-                thread = await ctx.message.create_thread(name=f"{CLI_THREAD_PREFIX}{ctx.author.display_name}")
+                thread = await ctx.message.create_thread(name=f"{thread_prefix}{ctx.author.display_name}")
             except discord.HTTPException as exc:
                 await ctx.send(f"Failed to create thread: {exc}")
                 return
@@ -126,7 +130,7 @@ class CliCog(commands.Cog):
                 try:
                     message = await self.bot.wait_for(
                         "message",
-                        timeout=SESSION_TIMEOUT_SEC,
+                        timeout=session_timeout_sec,
                         check=lambda m: m.author.id == ctx.author.id and m.channel.id == target_channel.id,
                     )
                 except TimeoutError:
@@ -186,7 +190,7 @@ class CliCog(commands.Cog):
             self._discard_cli_log_stream(session)
             self.sessions.release(ctx.guild.id)
             if thread is not None and auto_delete_thread:
-                self._schedule_thread_cleanup(ctx.guild.id, thread, cleanup_last_message_id)
+                self._schedule_thread_cleanup(ctx.guild.id, thread, cleanup_last_message_id, thread_delete_delay_sec)
 
     async def _ensure_global_bind(self) -> None:
         if hasattr(self.bot, "ensure_config_bound"):
@@ -237,20 +241,92 @@ class CliCog(commands.Cog):
             return
 
     async def _load_console_config(self, guild_id: int) -> dict:
-        row = await self.storage.load_config("guild", guild_id, "console")
-        payload = self._running_payload(row.data if row else {})
-        if not isinstance(payload, dict):
-            payload = {}
+        guild_row = await self.storage.load_config("guild", guild_id, "console")
+        guild_payload = self._running_payload(guild_row.data if guild_row else {})
+        if not isinstance(guild_payload, dict):
+            guild_payload = {}
+
+        root_row = await self.storage.load_config("root", 0, "root-defaults")
+        root_payload = self._running_payload(root_row.data if root_row else {})
+        root_sections = root_payload.get("sections", {}) if isinstance(root_payload, dict) else {}
+        root_console = root_sections.get("console", {}) if isinstance(root_sections, dict) else {}
+        if not isinstance(root_console, dict):
+            root_console = {}
         return {
-            "always_print_help": bool(payload.get("always_print_help", False)),
-            "console_mode": str(payload.get("console_mode", "thread") or "thread"),
-            "thread_console_after_delete": bool(payload.get("thread_console_after_delete", False)),
+            "always_print_help": bool(guild_payload.get("always_print_help", False)),
+            "console_mode": str(guild_payload.get("console_mode", "thread") or "thread"),
+            "thread_console_after_delete": bool(guild_payload.get("thread_console_after_delete", False)),
+            "session_timeout_sec": self._resolve_console_int(
+                guild_payload,
+                root_console,
+                "session_timeout_sec",
+                "session-timeout-sec",
+                DEFAULT_SESSION_TIMEOUT_SEC,
+                min_value=30,
+                max_value=86400,
+            ),
+            "thread_delete_delay_sec": self._resolve_console_int(
+                guild_payload,
+                root_console,
+                "thread_delete_delay_sec",
+                "thread-delete-delay-sec",
+                DEFAULT_THREAD_DELETE_DELAY_SEC,
+                min_value=0,
+                max_value=3600,
+            ),
+            "thread_prefix": self._resolve_console_str(
+                guild_payload,
+                root_console,
+                "thread_prefix",
+                "thread-prefix",
+                DEFAULT_CLI_THREAD_PREFIX,
+            ),
         }
 
-    def _schedule_thread_cleanup(self, guild_id: int, thread: object, last_message_id: int | None) -> None:
+    def _resolve_console_int(
+        self,
+        guild_payload: dict,
+        root_payload: dict,
+        snake_key: str,
+        cli_key: str,
+        default: int,
+        *,
+        min_value: int,
+        max_value: int,
+    ) -> int:
+        for payload in (guild_payload, root_payload):
+            value = payload.get(snake_key, payload.get(cli_key))
+            if value is None:
+                continue
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if min_value <= parsed <= max_value:
+                return parsed
+        return default
+
+    def _resolve_console_str(
+        self,
+        guild_payload: dict,
+        root_payload: dict,
+        snake_key: str,
+        cli_key: str,
+        default: str,
+    ) -> str:
+        for payload in (guild_payload, root_payload):
+            value = payload.get(snake_key, payload.get(cli_key))
+            if value is None:
+                continue
+            text = str(value)
+            if 1 <= len(text) <= 64:
+                return text
+        return default
+
+    def _schedule_thread_cleanup(self, guild_id: int, thread: object, last_message_id: int | None, delay_sec: int) -> None:
         async def cleanup() -> None:
             try:
-                await asyncio.sleep(THREAD_DELETE_DELAY_SEC)
+                await asyncio.sleep(delay_sec)
                 active = self.sessions.get(guild_id)
                 if active is not None and active.thread_id == thread.id:
                     return
@@ -1120,10 +1196,12 @@ class CliCog(commands.Cog):
                     continue
 
         active_session = self.sessions.get(guild_id)
+        console_config = await self._load_console_config(guild_id)
+        thread_prefix = str(console_config["thread_prefix"])
         removed: list[str] = []
         skipped: list[str] = []
         for thread in sorted(threads.values(), key=lambda value: value.id):
-            if not str(getattr(thread, "name", "")).startswith(CLI_THREAD_PREFIX):
+            if not str(getattr(thread, "name", "")).startswith(thread_prefix):
                 continue
             if active_session is not None and thread.id == active_session.thread_id:
                 skipped.append(f"thread={thread.id} status=active-session")

@@ -154,6 +154,9 @@ class ConsoleConfigV1(StrictModel):
     always_print_help: bool = False
     console_mode: Literal["thread", "channel"] = "thread"
     thread_console_after_delete: bool = False
+    session_timeout_sec: int | None = Field(default=None, ge=30, le=86400)
+    thread_delete_delay_sec: int | None = Field(default=None, ge=0, le=3600)
+    thread_prefix: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ManagementModuleConfigV1(StrictModel):

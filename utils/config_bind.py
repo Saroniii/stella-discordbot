@@ -90,7 +90,7 @@ async def bind_all_settings(storage: Storage, guild_ids: list[int], tick_meter: 
     except Exception as exc:
         trace = traceback.format_exc()
         trace_preview = trace[:2048]
-        detail_base = {
+        detail_base: dict[str, Any] = {
             "phase": phase,
             "error_type": exc.__class__.__name__,
             "error_message": str(exc),

@@ -65,7 +65,7 @@ class StickyAutoCog(commands.Cog):
         if not items:
             return
         chosen: tuple[dict[str, Any], dict[str, Any]] | None = None
-        for item in sorted((row for row in items if isinstance(row, dict)), key=lambda row: _safe_int(row.get("id"), 0)):
+        for item in sorted((row for row in items if isinstance(row, dict)), key=lambda row: int(_safe_int(row.get("id"), 0) or 0)):
             trigger_bot_message = bool(item.get("trigger_bot_message", False))
             if message.author.bot and not trigger_bot_message:
                 continue
@@ -373,7 +373,7 @@ class StickyAutoCog(commands.Cog):
         fields = embed_cfg.get("fields", [])
         parsed_fields: list[tuple[str, str, bool]] = []
         if isinstance(fields, list):
-            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: safe_int(it.get("id"), 0)):
+            for item in sorted((f for f in fields if isinstance(f, dict)), key=lambda it: int(safe_int(it.get("id"), 0) or 0)):
                 name = str(item.get("name", "") or "")
                 value = str(item.get("value", "") or "")
                 inline_mode = bool(item.get("inline_mode", False))

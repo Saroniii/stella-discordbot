@@ -17,7 +17,9 @@ from utils.cli.sections.log_config import LogConfigSection
 from utils.cli.sections.log_type import LogTypeSection
 from utils.cli.sections.management_module import ManagementModuleSection
 from utils.cli.sections.root_policy import (
+    RootDefaultsConsoleSection,
     RootDefaultsSection,
+    RootDefaultsControlPlaneTickSection,
     RootEnforceOverrideScopedSection,
     RootEnforceOverrideSection,
     RootPolicyScopedSection,
@@ -59,6 +61,8 @@ def build_section_registry() -> dict[str, SectionSpec]:
         "level-static-table": LevelStaticTableSection(),
         "level-gain-policy": LevelGainPolicySection(),
         "root-defaults": RootDefaultsSection(),
+        "root-defaults/console": RootDefaultsConsoleSection(),
+        "root-defaults/control-plane/tick": RootDefaultsControlPlaneTickSection(),
         "root-enforce": RootEnforceSection(),
         "root-enforce-override": RootEnforceOverrideSection(),
         "control-plane": ControlPlaneSection(),

@@ -50,8 +50,7 @@ def payload_to_set_lines(payload: dict[str, Any], prefix: str = "set") -> list[s
         if isinstance(raw_value, list):
             if not raw_value:
                 continue
-            tokens = [serialize_atom(item) for item in raw_value]
-            tokens = [item for item in tokens if item is not None]
+            tokens = [item for item in (serialize_atom(item) for item in raw_value) if item is not None]
             if not tokens:
                 continue
             lines.append(f"{prefix} {key} {' '.join(tokens)}")

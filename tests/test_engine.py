@@ -798,6 +798,83 @@ async def test_console_setting_persisted_across_session(monkeypatch, tmp_path, g
 
 
 @pytest.mark.asyncio
+async def test_console_fixed_value_settings_set_unset_and_show(monkeypatch, tmp_path, guild_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(guild_ctx)
+    session, _ = await engine.execute(guild_ctx, session, "enter console")
+    session, candidates = await engine.execute(guild_ctx, session, "?")
+    assert "set session-timeout-sec" in candidates.output
+    assert "set thread-delete-delay-sec" in candidates.output
+    assert "set thread-prefix" in candidates.output
+
+    session, result = await engine.execute(guild_ctx, session, "set session-timeout-sec 900")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "set thread-delete-delay-sec 5")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "set thread-prefix ops-cli-")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "show now-config")
+    assert "set session-timeout-sec 900" in result.output
+    assert "set thread-delete-delay-sec 5" in result.output
+    assert "set thread-prefix ops-cli-" in result.output
+
+    session, result = await engine.execute(guild_ctx, session, "unset thread-prefix")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "show now-config")
+    assert "set thread-prefix ops-cli-" not in result.output
+
+
+@pytest.mark.asyncio
+async def test_console_fixed_value_settings_reject_invalid_values(monkeypatch, tmp_path, guild_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(guild_ctx)
+    session, _ = await engine.execute(guild_ctx, session, "enter console")
+
+    session, result = await engine.execute(guild_ctx, session, "set session-timeout-sec 29")
+    assert "field=session_timeout_sec" in result.output
+    session, result = await engine.execute(guild_ctx, session, "set thread-delete-delay-sec 3601")
+    assert "field=thread_delete_delay_sec" in result.output
+    session, result = await engine.execute(guild_ctx, session, "set thread-prefix a b")
+    assert "field=thread-prefix reason=invalid value count" in result.output
+
+
+@pytest.mark.asyncio
+async def test_root_defaults_console_nested_set_and_show(monkeypatch, tmp_path, admin_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(admin_ctx)
+    session, _ = await engine.execute(admin_ctx, session, "switch root")
+    session, _ = await engine.execute(admin_ctx, session, "enter root-defaults")
+    session, _ = await engine.execute(admin_ctx, session, "enter console")
+
+    session, candidates = await engine.execute(admin_ctx, session, "?")
+    assert "set session-timeout-sec" in candidates.output
+    assert "set thread-delete-delay-sec" in candidates.output
+    assert "set thread-prefix" in candidates.output
+
+    session, result = await engine.execute(admin_ctx, session, "set session-timeout-sec 900")
+    assert result.output == "ok"
+    session, result = await engine.execute(admin_ctx, session, "set thread-prefix ops-cli-")
+    assert result.output == "ok"
+    session, result = await engine.execute(admin_ctx, session, "show now-config")
+    assert "enter root-defaults" in result.output
+    assert "enter console" in result.output
+    assert "set session-timeout-sec 900" in result.output
+    assert "set thread-prefix ops-cli-" in result.output
+
+
+@pytest.mark.asyncio
 async def test_show_global_returns_now_config_only(monkeypatch, tmp_path, guild_ctx: EngineContext):
     monkeypatch.chdir(tmp_path)
     storage = Storage()

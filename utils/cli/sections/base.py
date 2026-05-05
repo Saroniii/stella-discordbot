@@ -114,7 +114,15 @@ class SectionSpec(ABC):
     def select_target_with_payload(self, payload: dict[str, Any], target: str) -> tuple[str, dict[str, Any] | None]:
         return self.select_target(payload, target), None
 
+    def select_target_with_payload_for_item(
+        self, payload: dict[str, Any], item_id: int, target: str
+    ) -> tuple[str, dict[str, Any] | None]:
+        raise SectionError("field=select reason=invalid context hint=select not supported in this section")
+
     def list_select_candidates(self, payload: dict[str, Any]) -> list[str]:
+        return []
+
+    def list_select_candidates_for_item(self, payload: dict[str, Any], item_id: int) -> list[str]:
         return []
 
     def migrate(self, version: int, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:

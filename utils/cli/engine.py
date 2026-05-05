@@ -5,7 +5,7 @@ import uuid
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from utils.cli.logs import resolve_severity
@@ -540,6 +540,7 @@ class CliEngine:
         return session, EngineResult(output=output, prompt=self._prompt(session), should_exit=False)
 
     async def _cmd_get(self, ctx: EngineContext, session: SessionContext, args: list[str]) -> tuple[SessionContext, EngineResult]:
+        rows: Any
         if len(args) < 1:
             raise SectionError(
                 "field=get reason=invalid args hint=get counters all|get tick status|get guild-log message cache status|get log audit|get level-table|get level"
@@ -691,7 +692,8 @@ class CliEngine:
                     raise SectionError("field=limit reason=invalid integer hint=use numeric limit") from exc
             else:
                 limit = 50
-            rows = await self.storage.fetch_logs_safe(args[1], session.scope_id, limit)
+            log_kind: Literal["audit", "system"] = args[1]  # type: ignore[assignment]
+            rows = await self.storage.fetch_logs_safe(log_kind, session.scope_id, limit)
             display_timezone = await self._resolve_display_timezone_name(ctx, session)
             lines = [f"{args[1]} logs (limit={limit}):"]
             for row in rows:
@@ -708,15 +710,17 @@ class CliEngine:
             scope_type = session.scope_type.value if ctx.is_bot_admin else "guild"
             display_timezone = await self._resolve_display_timezone_name(ctx, session)
 
+            crash_limit_arg: int | None
+            error_id: str | None
             if len(args) > 2:
                 try:
-                    limit = int(args[2])
+                    crash_limit_arg = int(args[2])
                     error_id = None
                 except ValueError:
-                    limit = None
+                    crash_limit_arg = None
                     error_id = args[2]
             else:
-                limit = 50
+                crash_limit_arg = 50
                 error_id = None
 
             if error_id is not None:
@@ -749,8 +753,9 @@ class CliEngine:
                 ]
                 return session, EngineResult(output="\n".join(detail), prompt=self._prompt(session), should_exit=False)
 
-            rows = await self.storage.fetch_crash_logs_safe(scope_type=scope_type, scope_id=session.scope_id, limit=limit)
-            lines = [f"crash logs ({scope_type}) (limit={limit}):"]
+            crash_limit = crash_limit_arg if crash_limit_arg is not None else 50
+            rows = await self.storage.fetch_crash_logs_safe(scope_type=scope_type, scope_id=session.scope_id, limit=crash_limit)
+            lines = [f"crash logs ({scope_type}) (limit={crash_limit}):"]
             for row in rows:
                 context = row.context_json if isinstance(row.context_json, dict) else {}
                 scope_text = f"{context.get('scope_type', row.scope_type)}:{context.get('scope_id', row.scope_id)}"
@@ -916,17 +921,17 @@ class CliEngine:
         if len(args) in {2, 3} and args[0] == "config" and args[1] == "validate":
             if session.scope_type != ScopeType.GUILD:
                 raise SectionError("field=diagnose reason=forbidden hint=guild scope only")
-            target = "now-config"
+            target: str = "now-config"
             if len(args) == 3:
-                target = args[2]
+                target = str(args[2])
             if target not in {"now-config", "deploy-config"}:
                 raise SectionError("field=diagnose reason=invalid args hint=diagnose config validate [now-config|deploy-config]")
             output = await self._diagnose_config_validate(ctx, session, target)
             return session, EngineResult(output=output, prompt=self._prompt(session), should_exit=False)
 
-        section_key = self._current_section_key(session)
-        if section_key:
-            spec = self._section_spec(section_key)
+        diagnose_section_key = self._current_section_key(session)
+        if diagnose_section_key:
+            spec = self._section_spec(diagnose_section_key)
             return session, EngineResult(output=spec.handle_diagnose(), prompt=self._prompt(session), should_exit=False)
         return session, EngineResult(output="diagnose target not supported", prompt=self._prompt(session), should_exit=False)
 
@@ -2083,7 +2088,7 @@ class CliEngine:
         try:
             local_zone = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError:
-            local_zone = timezone.utc
+            local_zone = timezone.utc  # type: ignore[assignment]
             timezone_name = "UTC"
         local_text = parsed.astimezone(local_zone).strftime("%Y-%m-%d %H:%M:%S")
         return f"local={local_text} {timezone_name} utc={utc_text}"

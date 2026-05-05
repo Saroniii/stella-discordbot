@@ -228,7 +228,7 @@ class Storage:
         self.backend = "postgres" if self.database_url else "sqlite"
         self._sqlite_path = Path("data/stella.db")
         self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        self._pg_pool = None
+        self._pg_pool: Any = None
 
     def _utility_webhook_row(self, row: Any) -> UtilityWebhookRow:
         return UtilityWebhookRow(
@@ -1660,7 +1660,7 @@ class Storage:
                     registry_rows = await conn.fetch(
                         "SELECT tenant_key, scope_id FROM tenant_registry WHERE scope_type='guild' ORDER BY scope_id ASC"
                     )
-                    rows: list[Any] = []
+                    rows: Any = []
                     for registry_row in registry_rows:
                         table = self._table_name(str(registry_row["tenant_key"]), "utility_webhooks")
                         tenant_rows = await conn.fetch(
@@ -1691,7 +1691,7 @@ class Storage:
             return [self._utility_webhook_row(row) for row in rows]
 
         async with aiosqlite.connect(self._sqlite_path) as db:
-            rows: list[tuple[Any, ...]] = []
+            sqlite_rows: Any = []
             if guild_id is None:
                 cursor = await db.execute(
                     """
@@ -1700,7 +1700,7 @@ class Storage:
                     ORDER BY scope_id ASC
                     """
                 )
-                guild_tenants = await cursor.fetchall()
+                guild_tenants: Any = await cursor.fetchall()
             else:
                 tenant_key = await self._ensure_sqlite_tenant_tables("guild", guild_id, db=db)
                 guild_tenants = [(tenant_key, guild_id)]
@@ -1716,10 +1716,10 @@ class Storage:
                     """,
                     (int(tenant_guild_id), limit),
                 )
-                rows.extend(await cursor.fetchall())
-            rows.sort(key=lambda item: str(item[6]), reverse=True)
-            rows = rows[:limit]
-        return [self._utility_webhook_row(row) for row in rows]
+                sqlite_rows.extend(await cursor.fetchall())
+            sqlite_rows.sort(key=lambda item: str(item[6]), reverse=True)
+            sqlite_rows = sqlite_rows[:limit]
+        return [self._utility_webhook_row(row) for row in sqlite_rows]
 
     async def get_utility_webhook(self, ref_id: str) -> UtilityWebhookRow | None:
         if self.backend == "postgres":
@@ -2166,7 +2166,9 @@ class Storage:
 
     async def set_chat_group_global_attachment_channel(self, channel_id: int | None) -> None:
         now = datetime.now(timezone.utc).isoformat()
-        payload = {"attachment_channel_id": int(channel_id)} if channel_id is not None else {"attachment_channel_id": None}
+        payload: dict[str, int | None] = (
+            {"attachment_channel_id": int(channel_id)} if channel_id is not None else {"attachment_channel_id": None}
+        )
         if self.backend == "postgres":
             await self._ensure_pg_pool()
             async with self._pg_pool.acquire() as conn:
@@ -2798,6 +2800,8 @@ class Storage:
                 (group_id, guild_id, key_hash, preview, now),
             )
             await db.commit()
+            if cursor.lastrowid is None:
+                raise RuntimeError("chat_group_auth_key insert did not return row id")
             key_id = int(cursor.lastrowid)
         return key_id, plain
 
@@ -3279,6 +3283,8 @@ class Storage:
                 ),
             )
             await db.commit()
+            if cursor.lastrowid is None:
+                raise RuntimeError("chat_group_message insert did not return row id")
             return int(cursor.lastrowid)
 
     async def get_chat_group_message(self, message_id: int) -> ChatGroupMessageRow | None:
@@ -3826,7 +3832,8 @@ class Storage:
 
     async def _maybe_migrate_sqlite_legacy(self, db: aiosqlite.Connection) -> None:
         cursor = await db.execute("SELECT COUNT(*) FROM tenant_registry")
-        registry_count = (await cursor.fetchone())[0]
+        registry_row = await cursor.fetchone()
+        registry_count = registry_row[0] if registry_row is not None else 0
         if registry_count > 0:
             return
 

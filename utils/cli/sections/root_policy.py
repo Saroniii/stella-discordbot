@@ -15,7 +15,7 @@ from utils.cli.formatter import (
     serialize_atom,
     to_cli_key,
 )
-from utils.cli.sections.base import SectionError, SectionSpec, SelectableSectionSpec
+from utils.cli.sections.base import MappedSectionSpec, SectionError, SectionSpec, SelectableSectionSpec
 from utils.cli.types import RootDefaultsConfigV1, RootEnforceConfigV1, RootEnforceOverrideConfigV1
 
 
@@ -164,6 +164,7 @@ class RootDefaultsControlPlaneTickSection(SectionSpec):
             raise SectionError("field=key reason=unknown key hint=allowed: max-tick-limit,overlimit-mode")
 
         raw = values[0]
+        value: Any
         if canonical == "max-tick-limit":
             try:
                 value = int(raw)
@@ -220,6 +221,106 @@ class RootDefaultsControlPlaneTickSection(SectionSpec):
             return {
                 "max_tick_limit": target.get("max-tick-limit", target.get("max_tick_limit")),
                 "overlimit_mode": target.get("overlimit-mode", target.get("overlimit_mode")),
+            }
+
+        return render_config_pair(
+            self.name,
+            extract(now_config),
+            extract(deploy_config),
+            enter_path=section_to_enter_path(self.name),
+        )
+
+
+class RootDefaultsConsoleSection(SectionSpec):
+    name = "root-defaults/console"
+    schema_version = 1
+    field_rules = {
+        "session-timeout-sec": ("session-timeout-sec", MappedSectionSpec.parse_single_int("session-timeout-sec", "one integer")),
+        "thread-delete-delay-sec": (
+            "thread-delete-delay-sec",
+            MappedSectionSpec.parse_single_int("thread-delete-delay-sec", "one integer"),
+        ),
+        "thread-prefix": ("thread-prefix", None),
+    }
+
+    def default_payload(self) -> dict[str, Any]:
+        return RootDefaultsConfigV1().model_dump(mode="json")
+
+    def validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return RootDefaultsConfigV1.model_validate(payload).model_dump(mode="json")
+        except ValidationError as exc:
+            raise self._validation_error(exc)
+
+    def validate_set(self, payload: dict[str, Any], key: str, values: list[str]) -> dict[str, Any]:
+        canonical = key.lower()
+        if canonical not in self.field_rules:
+            raise SectionError("field=key reason=unknown key hint=allowed: session-timeout-sec,thread-delete-delay-sec,thread-prefix")
+        if canonical == "thread-prefix":
+            if len(values) != 1:
+                raise SectionError("field=thread-prefix reason=invalid value count hint=one prefix")
+            value: Any = values[0]
+            if not value:
+                raise SectionError("field=thread-prefix reason=empty value hint=use non-empty prefix")
+        else:
+            parser = self.field_rules[canonical][1]
+            if parser is None:
+                raise SectionError("field=key reason=unknown key hint=allowed: session-timeout-sec,thread-delete-delay-sec,thread-prefix")
+            value = parser(values)
+            if canonical == "session-timeout-sec" and not 30 <= value <= 86400:
+                raise SectionError("field=session-timeout-sec reason=invalid value hint=<30..86400>")
+            if canonical == "thread-delete-delay-sec" and not 0 <= value <= 3600:
+                raise SectionError("field=thread-delete-delay-sec reason=invalid value hint=<0..3600>")
+
+        draft = deepcopy(payload)
+        sections = dict(draft.get("sections", {}))
+        target = dict(sections.get("console", {}))
+        target[canonical] = value
+        sections["console"] = target
+        draft["sections"] = sections
+        return self.validate_payload(draft)
+
+    def apply_unset(self, payload: dict[str, Any], key: str) -> dict[str, Any]:
+        canonical = key.lower()
+        if canonical not in self.field_rules:
+            raise SectionError("field=key reason=unknown key hint=allowed: session-timeout-sec,thread-delete-delay-sec,thread-prefix")
+        draft = deepcopy(payload)
+        sections = dict(draft.get("sections", {}))
+        target = dict(sections.get("console", {}))
+        target.pop(canonical, None)
+        if target:
+            sections["console"] = target
+        else:
+            sections.pop("console", None)
+        draft["sections"] = sections
+        return self.validate_payload(draft)
+
+    def list_set_keys(self) -> list[str]:
+        return ["session-timeout-sec", "thread-delete-delay-sec", "thread-prefix"]
+
+    def list_value_candidates(self, key: str) -> list[str]:
+        if key == "session-timeout-sec":
+            return ["<30..86400>"]
+        if key == "thread-delete-delay-sec":
+            return ["<0..3600>"]
+        if key == "thread-prefix":
+            return ["<prefix>"]
+        return []
+
+    def render_show(self, now_config: dict[str, Any], deploy_config: dict[str, Any] | None) -> str:
+        def extract(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not isinstance(payload, dict):
+                return None
+            sections = payload.get("sections", {})
+            if not isinstance(sections, dict):
+                return None
+            target = sections.get("console", {})
+            if not isinstance(target, dict):
+                return None
+            return {
+                "session_timeout_sec": target.get("session-timeout-sec", target.get("session_timeout_sec")),
+                "thread_delete_delay_sec": target.get("thread-delete-delay-sec", target.get("thread_delete_delay_sec")),
+                "thread_prefix": target.get("thread-prefix", target.get("thread_prefix")),
             }
 
         return render_config_pair(
@@ -298,6 +399,7 @@ class RootEnforceControlPlaneTickSection(SectionSpec):
             raise SectionError("field=key reason=unknown key hint=allowed: max-tick-limit,overlimit-mode")
 
         raw = values[0]
+        value: Any
         if canonical == "max-tick-limit":
             try:
                 value = int(raw)
@@ -539,6 +641,7 @@ class RootEnforceOverrideControlPlaneTickSection(SectionSpec):
         if canonical not in {"max-tick-limit", "overlimit-mode"}:
             raise SectionError("field=key reason=unknown key hint=allowed: max-tick-limit,overlimit-mode")
         raw = values[0]
+        value: Any
         if canonical == "max-tick-limit":
             try:
                 value = int(raw)

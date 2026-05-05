@@ -123,10 +123,13 @@ class FakeBrokenNsfwChannel(FakeTextChannel):
 class FakeCommandMessage:
     def __init__(self, thread: FakeThread | None = None) -> None:
         self._thread = thread
+        self.created_thread_names: list[str] = []
 
     async def create_thread(self, name: str) -> FakeThread:
         if self._thread is None:
             raise RuntimeError("thread unavailable")
+        self.created_thread_names.append(name)
+        self._thread.name = name
         return self._thread
 
 
@@ -163,9 +166,11 @@ class FakeBot:
     def __init__(self, incoming: list[FakeIncomingMessage | BaseException] | None = None) -> None:
         self._incoming = list(incoming or [])
         self._guilds: dict[int, FakeGuild] = {}
+        self.wait_for_timeouts: list[int] = []
 
     async def wait_for(self, event_name: str, timeout: int, check):
         assert event_name == "message"
+        self.wait_for_timeouts.append(timeout)
         if not self._incoming:
             raise AssertionError("wait_for called with no prepared messages")
         value = self._incoming.pop(0)
@@ -658,6 +663,203 @@ async def test_cli_thread_mode_auto_deletes_after_close(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_cli_uses_root_console_defaults_when_guild_values_unset(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    sleep_values: list[float] = []
+    _orig_sleep = asyncio.sleep
+
+    async def _fast_sleep(seconds: float):
+        sleep_values.append(seconds)
+        await _orig_sleep(0)
+
+    monkeypatch.setattr("cogs.cli.asyncio.sleep", _fast_sleep)
+
+    guild = FakeGuild(7003)
+    author = FakeMember(user_id=5012, display_name="root-default", manage_guild=True)
+    thread = FakeThread(thread_id=7300)
+    incoming = [FakeIncomingMessage(author=author, channel=thread, content="quit")]
+    bot = FakeBot(incoming=incoming)
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    await cog.storage.upsert_config(
+        "root",
+        0,
+        "root-defaults",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "sections": {
+                        "console": {
+                            "session-timeout-sec": 900,
+                            "thread-delete-delay-sec": 7,
+                            "thread-prefix": "ops-cli-",
+                        }
+                    }
+                },
+                "startup_payload": {
+                    "sections": {
+                        "console": {
+                            "session-timeout-sec": 900,
+                            "thread-delete-delay-sec": 7,
+                            "thread-prefix": "ops-cli-",
+                        }
+                    }
+                },
+            },
+        },
+    )
+    await cog.storage.upsert_config(
+        "guild",
+        guild.id,
+        "console",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": True,
+                    "session_timeout_sec": None,
+                    "thread_delete_delay_sec": None,
+                    "thread_prefix": None,
+                },
+                "startup_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": True,
+                    "session_timeout_sec": None,
+                    "thread_delete_delay_sec": None,
+                    "thread_prefix": None,
+                },
+            },
+        },
+    )
+
+    command_message = FakeCommandMessage(thread=thread)
+    ctx = FakeContext(guild=guild, author=author, message=command_message, channel=thread)
+    await invoke_cli(cog, ctx)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert command_message.created_thread_names == ["ops-cli-root-default"]
+    assert bot.wait_for_timeouts == [900]
+    assert 7 in sleep_values
+    assert thread.deleted is True
+
+
+@pytest.mark.asyncio
+async def test_cli_guild_console_values_override_root_defaults(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    guild = FakeGuild(7004)
+    author = FakeMember(user_id=5013, display_name="guild-default", manage_guild=True)
+    thread = FakeThread(thread_id=7400)
+    incoming = [FakeIncomingMessage(author=author, channel=thread, content="quit")]
+    bot = FakeBot(incoming=incoming)
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    await cog.storage.upsert_config(
+        "root",
+        0,
+        "root-defaults",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {"sections": {"console": {"session-timeout-sec": 900, "thread-prefix": "ops-cli-"}}},
+                "startup_payload": {"sections": {"console": {"session-timeout-sec": 900, "thread-prefix": "ops-cli-"}}},
+            },
+        },
+    )
+    await cog.storage.upsert_config(
+        "guild",
+        guild.id,
+        "console",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": False,
+                    "session_timeout_sec": 1200,
+                    "thread_delete_delay_sec": None,
+                    "thread_prefix": "guild-cli-",
+                },
+                "startup_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": False,
+                    "session_timeout_sec": 1200,
+                    "thread_delete_delay_sec": None,
+                    "thread_prefix": "guild-cli-",
+                },
+            },
+        },
+    )
+
+    command_message = FakeCommandMessage(thread=thread)
+    ctx = FakeContext(guild=guild, author=author, message=command_message, channel=thread)
+    await invoke_cli(cog, ctx)
+
+    assert command_message.created_thread_names == ["guild-cli-guild-default"]
+    assert bot.wait_for_timeouts == [1200]
+
+
+@pytest.mark.asyncio
+async def test_cli_ignores_invalid_root_console_defaults(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    guild = FakeGuild(7005)
+    author = FakeMember(user_id=5014, display_name="invalid-root", manage_guild=True)
+    thread = FakeThread(thread_id=7500)
+    incoming = [FakeIncomingMessage(author=author, channel=thread, content="quit")]
+    bot = FakeBot(incoming=incoming)
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    await cog.storage.upsert_config(
+        "root",
+        0,
+        "root-defaults",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "sections": {
+                        "console": {
+                            "session-timeout-sec": 1,
+                            "thread-prefix": "",
+                        }
+                    }
+                },
+                "startup_payload": {
+                    "sections": {
+                        "console": {
+                            "session-timeout-sec": 1,
+                            "thread-prefix": "",
+                        }
+                    }
+                },
+            },
+        },
+    )
+
+    command_message = FakeCommandMessage(thread=thread)
+    ctx = FakeContext(guild=guild, author=author, message=command_message, channel=thread)
+    await invoke_cli(cog, ctx)
+
+    assert command_message.created_thread_names == ["stella-cli-invalid-root"]
+    assert bot.wait_for_timeouts == [600]
+
+
+@pytest.mark.asyncio
 async def test_execute_console_thread_unused_remove(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
@@ -691,6 +893,60 @@ async def test_execute_console_thread_unused_remove(monkeypatch, tmp_path):
     assert stale_thread.deleted is True
     assert keep_thread.deleted is False
     assert other_thread.deleted is False
+
+
+@pytest.mark.asyncio
+async def test_execute_console_thread_unused_remove_uses_configured_prefix(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    bot = FakeBot()
+    cog = CliCog(bot)
+    await cog.cog_load()
+
+    guild = FakeGuild(8004)
+    stale_thread = FakeThread(thread_id=8105, name="ops-cli-stale")
+    old_prefix_thread = FakeThread(thread_id=8106, name="stella-cli-stale")
+    text_channel = FakeTextChannel(channel_id=8203, threads=[stale_thread, old_prefix_thread])
+    guild.add_channel(text_channel)
+    bot._guilds[guild.id] = guild
+    await cog.storage.upsert_config(
+        "guild",
+        guild.id,
+        "console",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": False,
+                    "thread_prefix": "ops-cli-",
+                },
+                "startup_payload": {
+                    "always_print_help": False,
+                    "console_mode": "thread",
+                    "thread_console_after_delete": False,
+                    "thread_prefix": "ops-cli-",
+                },
+            },
+        },
+    )
+
+    session = SessionContext(
+        session_id="cleanup",
+        guild_id=guild.id,
+        thread_id=0,
+        actor_user_id=1,
+        scope_type=ScopeType.GUILD,
+        scope_id=guild.id,
+    )
+    ctx = EngineContext(actor_user_id=1, guild_id=guild.id, channel_id=text_channel.id, is_bot_admin=False, has_manage_guild=True)
+    output = await cog._execute_console(ctx, session, ["thread", "unused", "remove", str(text_channel.id)])
+
+    assert "thread=8105 status=deleted" in output
+    assert stale_thread.deleted is True
+    assert old_prefix_thread.deleted is False
 
 
 @pytest.mark.asyncio
