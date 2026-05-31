@@ -1010,6 +1010,44 @@ async def test_cli_log_to_file_start_no_message_response_and_stop(monkeypatch, t
 
 
 @pytest.mark.asyncio
+async def test_cli_log_to_file_respects_max_bytes(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)
+
+    guild = FakeGuild(9010)
+    author = FakeMember(user_id=7782, display_name="logger-limit", manage_guild=True)
+    thread = FakeThread(thread_id=9011)
+    incoming = [
+        FakeIncomingMessage(author=author, channel=thread, content="execute cli to-file start no-message-response"),
+        FakeIncomingMessage(author=author, channel=thread, content="help"),
+        FakeIncomingMessage(author=author, channel=thread, content="quit"),
+    ]
+    bot = FakeBot(incoming=incoming)
+    cog = CliCog(bot)
+    await cog.cog_load()
+    await cog.storage.upsert_config(
+        "guild",
+        guild.id,
+        "console",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {"cli_log_max_bytes": 220},
+                "startup_payload": {"cli_log_max_bytes": 220},
+            },
+        },
+    )
+
+    ctx = FakeContext(guild=guild, author=author, message=FakeCommandMessage(thread=thread), channel=thread)
+    await invoke_cli(cog, ctx)
+
+    exported = next(file for file in thread.sent_files if getattr(file, "filename", "").startswith("cli-log-"))
+    payload = exported.fp.getvalue().decode("utf-8")
+    assert "# cli log truncated: max_bytes=220" in payload
+    assert len(payload.encode("utf-8")) <= 260
+
+
+@pytest.mark.asyncio
 async def test_cli_log_to_file_start_normal_mode_and_stop(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cogs.cli.discord.Member", FakeMemberBase)

@@ -690,6 +690,41 @@ async def test_auto_reaction_adds_all_emojis_with_tick(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_auto_reaction_runtime_respects_configured_caps(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    bot = FakeBot()
+    cog = StickyAutoCog(bot)
+    cog.tick_meter = FakeTickMeter()
+    await cog.cog_load()
+
+    guild_channel = FakeChannel(888)
+    guild = FakeGuild(2234, guild_channel)
+    user = FakeUser(10, bot=False)
+    message = FakeMessage(guild, guild_channel, user, "world")
+
+    await cog.storage.upsert_config("guild", 2234, "management-module", _envelope({"welcome": True, "level": True, "sticky_message": False, "auto_reaction": True}))
+    await cog.storage.upsert_config(
+        "guild",
+        2234,
+        "auto-reaction",
+        _envelope(
+            {
+                "max_rules": 1,
+                "max_channels_per_rule": 1,
+                "max_emojis_per_rule": 1,
+                "rules": [
+                    {"id": 1, "channels": [888, 999], "emojis": ["🔥", "✅"]},
+                    {"id": 2, "channels": [888], "emojis": ["❌"]},
+                ],
+            }
+        ),
+    )
+
+    await cog.on_message(message)
+    assert message.added_reactions == ["🔥"]
+
+
+@pytest.mark.asyncio
 async def test_sticky_embed_conversion_failures_are_logged(monkeypatch, tmp_path, caplog):
     monkeypatch.chdir(tmp_path)
     bot = FakeBot()

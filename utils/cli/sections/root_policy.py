@@ -36,6 +36,27 @@ def _convert_value(values: list[str]) -> Any:
     return converted
 
 
+def _delegate_validated_field_value(delegate: SectionSpec, key: str, values: list[str]) -> Any:
+    validated = delegate.validate_set(delegate.default_payload(), key, values)
+    if isinstance(delegate, MappedSectionSpec):
+        canonical = delegate.field_aliases.get(key, key)
+        rule = delegate.field_rules.get(canonical)
+        if rule is not None:
+            current: Any = validated
+            for token in rule.path:
+                if not isinstance(current, dict):
+                    break
+                current = current.get(token)
+            else:
+                return current
+    storage_key = key.replace("-", "_")
+    if storage_key in validated:
+        return validated[storage_key]
+    if key in validated:
+        return validated[key]
+    return _convert_value(values)
+
+
 def _policy_storage_key(logical_section: str) -> str:
     return logical_section
 
@@ -786,7 +807,7 @@ class RootPolicyScopedSection(SectionSpec):
             draft.get("sections", {}),
             section_name,
             field_name,
-            _convert_value(values),
+            _delegate_validated_field_value(self.delegate, key, values),
         )
         return self.validate_payload(draft)
 
@@ -875,7 +896,7 @@ class RootEnforceOverrideScopedSection(SectionSpec):
             entry.get("sections", {}),
             section_name,
             field_name,
-            _convert_value(values),
+            _delegate_validated_field_value(self.delegate, key, values),
         )
         entry["sections"] = sections
         guilds[guild_key] = entry

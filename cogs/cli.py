@@ -155,7 +155,7 @@ class CliCog(commands.Cog):
                         continue
                     pre_prompt = self.engine._prompt(session)
                     session, result = await self.engine.execute(engine_ctx, session, line)
-                    self._append_cli_log_entry(session, pre_prompt, line, result.output)
+                    self._append_cli_log_entry(session, pre_prompt, line, result.output, int(console_config["cli_log_max_bytes"]))
                     suppress_line = (
                         session.cli_log_stream_enabled
                         and session.cli_log_no_message_response
@@ -256,6 +256,15 @@ class CliCog(commands.Cog):
             "always_print_help": bool(guild_payload.get("always_print_help", False)),
             "console_mode": str(guild_payload.get("console_mode", "thread") or "thread"),
             "thread_console_after_delete": bool(guild_payload.get("thread_console_after_delete", False)),
+            "cli_log_max_bytes": self._resolve_console_int(
+                guild_payload,
+                root_console,
+                "cli_log_max_bytes",
+                "cli-log-max-bytes",
+                0,
+                min_value=0,
+                max_value=10000000,
+            ),
             "session_timeout_sec": self._resolve_console_int(
                 guild_payload,
                 root_console,
@@ -1319,15 +1328,21 @@ class CliCog(commands.Cog):
     def _running_payload(self, raw: dict) -> dict:
         return extract_running_payload(raw)
 
-    def _append_cli_log_entry(self, session, prompt: str, line: str, output: str) -> None:
+    def _append_cli_log_entry(self, session, prompt: str, line: str, output: str, max_bytes: int = 0) -> None:
         stream = self._cli_log_streams.get(session.session_id)
         if stream is None:
             return
+        before = stream.tell()
         stream.write(f"{prompt} {line}\n")
         if output:
             stream.write(output.rstrip())
             stream.write("\n")
         stream.write(f"{prompt}\n")
+        if max_bytes > 0 and stream.tell() > max_bytes:
+            stream.seek(before)
+            stream.truncate()
+            stream.write(f"# cli log truncated: max_bytes={max_bytes}\n")
+            self._cli_log_stop_requested.add(session.session_id)
 
     def _finalize_cli_log_to_file(self, session) -> discord.File | None:
         stream = self._cli_log_streams.get(session.session_id)

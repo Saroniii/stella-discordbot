@@ -157,6 +157,7 @@ class ConsoleConfigV1(StrictModel):
     session_timeout_sec: int | None = Field(default=None, ge=30, le=86400)
     thread_delete_delay_sec: int | None = Field(default=None, ge=0, le=3600)
     thread_prefix: str | None = Field(default=None, min_length=1, max_length=64)
+    cli_log_max_bytes: int = Field(default=0, ge=0, le=10000000)
 
 
 class ManagementModuleConfigV1(StrictModel):
@@ -216,6 +217,9 @@ class AutoReactionRuleV1(StrictModel):
 
 class AutoReactionConfigV1(StrictModel):
     rules: list[AutoReactionRuleV1] = Field(default_factory=list)
+    max_rules: int = Field(default=0, ge=0, le=10000)
+    max_channels_per_rule: int = Field(default=0, ge=0, le=10000)
+    max_emojis_per_rule: int = Field(default=0, ge=0, le=10000)
 
 
 class LevelCommonConfigV1(StrictModel):
@@ -252,10 +256,12 @@ class LevelSharedConfigV1(StrictModel):
 
 class LevelSegmentTableConfigV1(StrictModel):
     entries: dict[str, int] = Field(default_factory=dict)
+    max_entries: int = Field(default=0, ge=0, le=10000)
 
 
 class LevelStaticTableConfigV1(StrictModel):
     entries: dict[str, int] = Field(default_factory=dict)
+    max_entries: int = Field(default=0, ge=0, le=10000)
 
 
 class LevelGainPolicyRuleV1(StrictModel):

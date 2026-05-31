@@ -92,6 +92,75 @@ async def test_engine_root_enforce_blocks_guild_set(monkeypatch, tmp_path, guild
 
 
 @pytest.mark.asyncio
+async def test_root_scoped_policy_uses_delegate_validation(monkeypatch, tmp_path, admin_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(admin_ctx)
+    session, _ = await engine.execute(admin_ctx, session, "switch root")
+    session, _ = await engine.execute(admin_ctx, session, "enter root-defaults")
+    session, _ = await engine.execute(admin_ctx, session, "enter level-common")
+    session, result = await engine.execute(admin_ctx, session, "set max-level 0")
+    assert "greater than or equal to 1" in result.output
+
+    session, result = await engine.execute(admin_ctx, session, "set max-level 42")
+    assert result.output == "ok"
+    session, result = await engine.execute(admin_ctx, session, "deploy")
+    assert "deployed startup:" in result.output
+    row = await storage.load_config("root", 0, "root-defaults")
+    assert row is not None
+    assert row.data["payload"]["running_payload"]["sections"]["level-common"]["max-level"] == 42
+
+
+@pytest.mark.asyncio
+async def test_auto_reaction_limits_and_zero_unlimited(monkeypatch, tmp_path, guild_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(guild_ctx)
+    session, _ = await engine.execute(guild_ctx, session, "enter auto-reaction")
+    session, result = await engine.execute(guild_ctx, session, "set max-rules 1")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "select 1")
+    assert result.output == "selected 1"
+    session, result = await engine.execute(guild_ctx, session, "select 2")
+    assert "max 1" in result.output
+
+    session, result = await engine.execute(guild_ctx, session, "set max-rules 0")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "select 2")
+    assert result.output == "selected 2"
+
+
+@pytest.mark.asyncio
+async def test_level_table_max_entries_limit_and_zero_unlimited(monkeypatch, tmp_path, guild_ctx: EngineContext):
+    monkeypatch.chdir(tmp_path)
+    storage = Storage()
+    await storage.init_schema()
+    engine = CliEngine(storage)
+
+    session, _ = await engine.initialize_session(guild_ctx)
+    session, _ = await engine.execute(guild_ctx, session, "enter level-static-table")
+    session, result = await engine.execute(guild_ctx, session, "set max-entries 1")
+    assert result.output == "ok"
+    session, _ = await engine.execute(guild_ctx, session, "select 1")
+    session, result = await engine.execute(guild_ctx, session, "set xp 100")
+    assert result.output == "ok"
+    session, _ = await engine.execute(guild_ctx, session, "select 2")
+    session, result = await engine.execute(guild_ctx, session, "set xp 200")
+    assert "max 1" in result.output
+
+    session, result = await engine.execute(guild_ctx, session, "set max-entries 0")
+    assert result.output == "ok"
+    session, result = await engine.execute(guild_ctx, session, "set xp 200")
+    assert result.output == "ok"
+
+
+@pytest.mark.asyncio
 async def test_engine_get_logs(monkeypatch, tmp_path, guild_ctx: EngineContext):
     monkeypatch.chdir(tmp_path)
     storage = Storage()

@@ -45,6 +45,14 @@ class FakeMember:
         return self._user_text
 
 
+class FakeSendChannel:
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+
+    async def send(self, content=None, **kwargs):
+        self.sent.append({"content": content, **kwargs})
+
+
 @pytest.mark.asyncio
 async def test_bind_all_settings_preloads_sections(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
@@ -158,6 +166,41 @@ async def test_levelup_message_username_placeholder(monkeypatch, tmp_path):
         total_xp=123,
     )
     assert message == "GG Saroniii! level=2"
+
+
+@pytest.mark.asyncio
+async def test_levelup_send_disables_everyone_and_role_mentions(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    bot = FakeBot([1234])
+    cog = LevelCog(bot)
+    await cog.cog_load()
+    channel = FakeSendChannel()
+
+    async def _resolve(_guild, _channel_id):
+        return channel
+
+    monkeypatch.setattr("cogs.level.resolve_guild_channel", _resolve)
+    monkeypatch.setattr("cogs.level.discord.TextChannel", FakeSendChannel)
+    await cog.storage.upsert_config(
+        "guild",
+        1234,
+        "level-common",
+        {
+            "schema_version": 1,
+            "payload": {
+                "running_payload": {"levelup_channel": 99, "levelup_message": "@everyone <@&1> {mention}"},
+                "startup_payload": {"levelup_channel": 99, "levelup_message": "@everyone <@&1> {mention}"},
+            },
+        },
+    )
+    member = FakeMember(name="Saroniii", mention="<@1>")
+    await cog._maybe_notify_levelup(FakeGuild(1234), member, 1, 2, 100)
+
+    assert channel.sent
+    allowed = channel.sent[0]["allowed_mentions"]
+    assert allowed.everyone is False
+    assert allowed.roles is False
+    assert allowed.users is True
 
 
 @pytest.mark.asyncio

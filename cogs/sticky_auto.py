@@ -325,15 +325,20 @@ class StickyAutoCog(commands.Cog):
         rules = config.get("rules", []) if isinstance(config, dict) else []
         if not isinstance(rules, list):
             return
-        for rule in rules:
+        max_rules = int(config.get("max_rules", 0) or 0) if isinstance(config, dict) else 0
+        max_channels = int(config.get("max_channels_per_rule", 0) or 0) if isinstance(config, dict) else 0
+        max_emojis = int(config.get("max_emojis_per_rule", 0) or 0) if isinstance(config, dict) else 0
+        active_rules = rules[:max_rules] if max_rules > 0 else rules
+        for rule in active_rules:
             if not isinstance(rule, dict):
                 continue
-            if not self._rule_matches_channel(rule, message.channel.id):
+            if not self._rule_matches_channel(rule, message.channel.id, max_channels=max_channels):
                 continue
             emojis = rule.get("emojis", [])
             if not isinstance(emojis, list):
                 continue
-            for emoji_value in emojis:
+            active_emojis = emojis[:max_emojis] if max_emojis > 0 else emojis
+            for emoji_value in active_emojis:
                 reaction = self._resolve_reaction_emoji(message.guild, str(emoji_value))
                 if reaction is None:
                     continue
@@ -402,11 +407,12 @@ class StickyAutoCog(commands.Cog):
     def _parse_color(self, raw: Any) -> discord.Color | None:
         return parse_discord_color(raw)
 
-    def _rule_matches_channel(self, rule: dict[str, Any], channel_id: int) -> bool:
+    def _rule_matches_channel(self, rule: dict[str, Any], channel_id: int, *, max_channels: int = 0) -> bool:
         channels = rule.get("channels", [])
         if not isinstance(channels, Sequence):
             return False
-        return channel_id in [safe_int(ch) for ch in channels if safe_int(ch) is not None]
+        active_channels = channels[:max_channels] if max_channels > 0 else channels
+        return channel_id in [safe_int(ch) for ch in active_channels if safe_int(ch) is not None]
 
     def _resolve_reaction_emoji(self, guild: discord.Guild, raw: str) -> str | discord.Emoji | None:
         raw = raw.strip()

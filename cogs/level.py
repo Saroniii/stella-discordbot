@@ -159,7 +159,7 @@ class LevelCog(commands.Cog):
             new_level=new_level,
             total_xp=total_xp,
         )
-        await channel.send(message)
+        await channel.send(message, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
 
     async def _ensure_bind_ready(self) -> None:
         await ensure_bind_ready(self.bot)

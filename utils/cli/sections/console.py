@@ -51,6 +51,11 @@ class ConsoleSection(MappedSectionSpec):
             parser=_parse_thread_prefix,
             candidates=["<prefix>"],
         ),
+        "cli-log-max-bytes": FieldRule(
+            path=("cli_log_max_bytes",),
+            parser=MappedSectionSpec.parse_single_int("cli-log-max-bytes", hint="one integer, 0 means unlimited"),
+            candidates=["<0..10000000>"],
+        ),
     }
 
     def default_payload(self) -> dict[str, Any]:
